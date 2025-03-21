@@ -1,0 +1,11 @@
+[project]
+name = "photo-uploader"
+version = "0.1.0"
+description = "Upload photos to MinIO with proper organization"
+requires-python = ">=3.12"
+dependencies = [
+    "minio>=7.2.15",
+    "pillow>=11.1.0",
+    "python-dotenv>=1.0.1",
+    "tqdm>=4.67.1",
+]
