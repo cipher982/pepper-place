@@ -9,41 +9,30 @@ A beautiful interactive timeline to view photos of Pepper (the dog) throughout t
 - Responsive design that works on all devices
 - Connected to MinIO (S3-compatible storage) for photo storage
 
-## Setup Instructions
-
-### Prerequisites
-
-- Node.js and npm
-- MinIO server (or any S3-compatible storage)
-- A collection of dog photos sorted by year
-
-### Installation
-
-1. Clone this repository
-2. Install dependencies:
-   ```
-   npm install
-   ```
-3. Configure your MinIO/S3 credentials in the `.env` file:
-   ```
-   REACT_APP_S3_ENDPOINT=your-minio-endpoint
-   REACT_APP_S3_ACCESS_KEY=your-access-key
-   REACT_APP_S3_SECRET_KEY=your-secret-key
-   REACT_APP_S3_BUCKET=your-bucket-name
-   ```
-
 ### Photo Organization
 
-For the timeline to work properly, upload your photos to your MinIO bucket with the following structure:
+Photos and videos are stored in MinIO with the following organization:
+
 ```
-photos/YYYY/MM/image.jpg
+media/YYYY/MM/file_hash.ext
+thumbnails/YYYY/MM/file_hash.jpg
 ```
+
+Each file is processed as follows:
+- HEIC/HEIF images are automatically converted to JPEG for web compatibility
+- All other image formats (JPG, PNG) are preserved in their original format
+- Videos (MP4, MOV) are stored in their original format
+- All media types have thumbnails generated and stored as JPGs
 
 For example:
 ```
-photos/2020/01/pepper_snow.jpg
-photos/2021/06/pepper_beach.jpg
+media/2020/01/a1b2c3d4e5.jpg       # A regular JPG or converted HEIC image
+media/2021/06/f6g7h8i9j0.mp4       # A video file
+thumbnails/2020/01/a1b2c3d4e5.jpg   # Thumbnail for the image
+thumbnails/2021/06/f6g7h8i9j0.jpg   # Thumbnail for the video (extracted frame)
 ```
+
+The filenames are based on a hash of the file contents, ensuring uniqueness while removing original filenames that might contain personally identifiable information.
 
 ### Running the App
 
@@ -57,9 +46,39 @@ Building for production:
 npm run build
 ```
 
-## Deployment
+## Photo Upload Tool
 
-After building the app, you can deploy the contents of the `build` directory to any static hosting service like Netlify, Vercel, GitHub Pages, or a simple S3 bucket.
+The repository includes a photo upload script that processes media files and uploads them to MinIO with proper organization.
+
+### Features
+- Automatic organization by date (extracted from EXIF metadata)
+- HEIC/HEIF conversion to web-friendly JPEG format
+- Thumbnail generation for all media types (including video frames)
+- Progress tracking with upload speed metrics
+- Error handling and retry capabilities
+
+### Usage
+```bash
+# Basic usage
+cd python_stuff
+uv run python upload_photos.py
+
+# With custom directory
+uv run python upload_photos.py --dir /path/to/photos
+
+# Skip video thumbnail generation (faster)
+uv run python upload_photos.py --skip-video-thumbnails
+```
+
+### Requirements
+- Python 3.8+
+- MinIO server
+- ffmpeg (for video processing)
+- exiftool (for metadata extraction)
+- Required Python packages (install with UV):
+  ```
+  uv pip install minio pillow python-dotenv tqdm
+  ```
 
 ## Next Steps
 
