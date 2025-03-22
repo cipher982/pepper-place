@@ -14,10 +14,24 @@ export interface TimelinePeriod {
   count: number;
 }
 
-export interface S3Config {
+export interface MinioConfig {
   endpoint: string;
-  accessKeyId: string;
-  secretAccessKey: string;
   bucket: string;
-  region?: string;
+}
+
+export interface ManifestPhoto {
+  id: string;
+  path: string;
+  year: number;
+  month: number;
+  filename: string;
+  size?: number;
+  last_modified?: string;
+}
+
+export interface Manifest {
+  photos: ManifestPhoto[];
+  timeline: TimelinePeriod[];
+  generated_at: string;
+  total_photos: number;
 } 

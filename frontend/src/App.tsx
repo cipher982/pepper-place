@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import styled from "styled-components";
 import Timeline from "./components/Timeline";
 import PhotoGallery from "./components/PhotoGallery";
@@ -54,15 +54,13 @@ const ErrorState = styled.div`
 `;
 
 function App() {
-  // Make sure we're using the proper environment variables with correct format
-  const s3Config = {
+  // Use useMemo to prevent config recreation on each render
+  const minioConfig = useMemo(() => ({
     endpoint: process.env.REACT_APP_S3_ENDPOINT || "http://localhost:9000",
-    accessKeyId: process.env.REACT_APP_S3_ACCESS_KEY || "minioadmin",
-    secretAccessKey: process.env.REACT_APP_S3_SECRET_KEY || "minioadmin",
     bucket: process.env.REACT_APP_S3_BUCKET || "pepper-photos-simple",
-  };
+  }), []);
   
-  const { photos, timeline, loading, error, currentYear, setCurrentYear } = usePhotoData(s3Config);
+  const { photos, timeline, loading, error, currentYear, setCurrentYear } = usePhotoData(minioConfig);
 
   return (
     <AppContainer>
