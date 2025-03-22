@@ -91,7 +91,7 @@ const Timeline: React.FC<TimelineProps> = ({
           setTooltipPosition(rect.left + rect.width / 2);
         }}
       >
-        {displayYearText.split(" ")[0]}
+        {/* Removed year text from inside the thumb */}
       </StyledThumb>
     );
   };

@@ -4,22 +4,22 @@
 const theme = {
   // Color palette
   colors: {
-    primary: "#ff6b6b",      // Primary accent color (currently used for slider thumb, year markers)
-    secondary: "#83a4d4",    // Secondary accent (used in slider track)
+    primary: "#E27D60",      // Warm terracotta/coral (for slider thumb, year markers)
+    secondary: "#41B3A3",    // Teal/aqua accent color
     text: {
-      primary: "#333",       // Primary text color
-      secondary: "#666",     // Secondary/lighter text color
+      primary: "#333333",    // Dark charcoal (not pure black)
+      secondary: "#666666",  // Secondary/lighter text color
       light: "#ffffff",      // Light text (for dark backgrounds)
     },
     background: {
-      primary: "#ffffff",    // Main background color
-      secondary: "#f8f8f8",  // Secondary background (for cards, containers)
-      tertiary: "#f0f0f0",   // Tertiary background (for gallery slide wrapper)
+      primary: "#F9F5F0",    // Soft cream/beige main background
+      secondary: "#F0EBE3",  // Slightly darker secondary background
+      tertiary: "#E8E4DD",   // Tertiary background (for gallery slide wrapper)
     },
     ui: {
-      border: "#ddd",        // Border color
-      shadow: "rgba(0, 0, 0, 0.05)", // Shadow color
-      overlay: "rgba(0, 0, 0, 0.7)", // Overlay background color
+      border: "#E0D9CF",     // Softer border color
+      shadow: "rgba(0, 0, 0, 0.08)", // Slightly stronger shadow
+      overlay: "rgba(63, 50, 42, 0.75)", // Warmer overlay background
     },
     feedback: {
       error: {
@@ -53,7 +53,7 @@ const theme = {
   
   // Typography
   typography: {
-    fontFamily: "\"Roboto\", sans-serif",
+    fontFamily: "\"Quicksand\", \"Roboto\", sans-serif",
     fontSize: {
       xs: "0.9rem",
       sm: "1rem",
@@ -66,6 +66,12 @@ const theme = {
       normal: 400,
       medium: 500,
       bold: 700,
+    },
+    letterSpacing: {
+      tight: "-0.5px",
+      normal: "0px",
+      wide: "1px",
+      extraWide: "2px",
     },
   },
   
@@ -80,9 +86,9 @@ const theme = {
   
   // Border radius
   borderRadius: {
-    sm: "3px",
-    md: "4px",
-    lg: "8px",
+    sm: "4px",
+    md: "8px",
+    lg: "12px",  // Increased roundness for cards
     xl: "50px", // For completely round elements
   },
   

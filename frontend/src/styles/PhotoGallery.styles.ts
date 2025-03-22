@@ -9,7 +9,7 @@ export const GalleryContainer = styled.div`
     background-color: ${({ theme }) => theme.colors.background.secondary};
     border-radius: ${({ theme }) => theme.borderRadius.lg};
     overflow: hidden;
-    box-shadow: 0 4px 12px ${({ theme }) => theme.colors.ui.shadow};
+    box-shadow: 0 8px 20px ${({ theme }) => theme.colors.ui.shadow};
   }
   
   .image-gallery-content {
@@ -24,6 +24,7 @@ export const GalleryContainer = styled.div`
     align-items: center;
     justify-content: center;
     background-color: ${({ theme }) => theme.colors.background.tertiary};
+    /* Removing padding to avoid letterbox effect */
   }
   
   .image-gallery-slide {
@@ -39,6 +40,7 @@ export const GalleryContainer = styled.div`
     max-height: 100%;
     max-width: 100%;
     transition: opacity ${({ theme }) => theme.transitions.medium};
+    /* Removing border-radius to avoid letterbox effect */
   }
 
   .image-gallery-slide video {
@@ -46,6 +48,7 @@ export const GalleryContainer = styled.div`
     max-width: 100%;
     object-fit: contain;
     transition: opacity ${({ theme }) => theme.transitions.medium};
+    /* Removing border-radius to avoid letterbox effect */
   }
   
   .image-gallery-description {
@@ -61,14 +64,16 @@ export const GalleryContainer = styled.div`
     max-width: 80%;
     text-align: center;
     z-index: ${({ theme }) => theme.zIndex.overlay};
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
   }
   
   .image-gallery-thumbnails-container {
     display: flex;
     overflow-x: auto;
-    padding: ${({ theme }) => theme.spacing.sm} 0;
+    padding: ${({ theme }) => theme.spacing.md} 0;
     justify-content: center;
     background-color: ${({ theme }) => theme.colors.background.primary};
+    border-top: 1px solid ${({ theme }) => theme.colors.ui.border};
   }
   
   .image-gallery-thumbnail {
@@ -78,10 +83,17 @@ export const GalleryContainer = styled.div`
     border-radius: ${({ theme }) => theme.borderRadius.md};
     overflow: hidden;
     transition: all ${({ theme }) => theme.transitions.short};
+    box-shadow: 0 2px 6px ${({ theme }) => theme.colors.ui.shadow};
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px ${({ theme }) => theme.colors.ui.shadow};
+    }
   }
   
   .image-gallery-thumbnail.active {
     border: 2px solid ${({ theme }) => theme.colors.primary};
+    transform: translateY(-2px) scale(1.05);
   }
   
   .image-gallery-thumbnail-image {
@@ -91,6 +103,11 @@ export const GalleryContainer = styled.div`
   
   .image-gallery-icon {
     filter: drop-shadow(0px 0px 3px rgba(0, 0, 0, 0.3));
+    color: ${({ theme }) => theme.colors.text.light};
+    
+    &:hover {
+      color: ${({ theme }) => theme.colors.primary};
+    }
   }
 
   .image-loading {
@@ -108,6 +125,7 @@ export const PositionIndicator = styled.div`
   border-radius: ${({ theme }) => theme.borderRadius.md};
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
   z-index: ${({ theme }) => theme.zIndex.overlay};
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 `;
 
 export const EmptyState = styled.div`

@@ -15,11 +15,27 @@ export const Header = styled.header`
     font-size: ${({ theme }) => theme.typography.fontSize.xxl};
     color: ${({ theme }) => theme.colors.text.primary};
     margin-bottom: ${({ theme }) => theme.spacing.xs};
+    letter-spacing: ${({ theme }) => theme.typography.letterSpacing.wide};
+    font-weight: ${({ theme }) => theme.typography.fontWeight.bold};
+    position: relative;
+    display: inline-block;
+    
+    &:after {
+      content: '';
+      display: block;
+      width: 40%;
+      height: 3px;
+      background-color: ${({ theme }) => theme.colors.primary};
+      margin: 8px auto 0;
+      border-radius: 2px;
+    }
   }
   
   p {
     font-size: ${({ theme }) => theme.typography.fontSize.md};
     color: ${({ theme }) => theme.colors.text.secondary};
+    letter-spacing: ${({ theme }) => theme.typography.letterSpacing.normal};
+    font-weight: ${({ theme }) => theme.typography.fontWeight.normal};
   }
 `;
 

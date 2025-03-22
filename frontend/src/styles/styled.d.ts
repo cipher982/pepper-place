@@ -65,6 +65,12 @@ declare module 'styled-components' {
         medium: number;
         bold: number;
       };
+      letterSpacing: {
+        tight: string;
+        normal: string;
+        wide: string;
+        extraWide: string;
+      };
     };
     
     breakpoints: {
