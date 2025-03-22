@@ -4,27 +4,56 @@ export const GalleryContainer = styled.div`
   padding: ${({ theme }) => theme.spacing.lg};
   margin: 35px auto 0;
   max-width: 1000px;
+  width: 100%;
+  box-sizing: border-box; /* Important: include padding in width calculation */
   
+  @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+    padding: ${({ theme }) => theme.spacing.md};
+    margin: 20px auto 0;
+    max-width: 100%; /* Ensure container doesn't exceed screen width */
+  }
+  
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    padding: ${({ theme }) => theme.spacing.sm};
+    margin: 10px auto 0;
+  }
+  
+  /* Ensure the gallery respects container boundaries */
   .image-gallery {
     background-color: ${({ theme }) => theme.colors.background.secondary};
     border-radius: ${({ theme }) => theme.borderRadius.lg};
     overflow: hidden;
     box-shadow: 0 8px 20px ${({ theme }) => theme.colors.ui.shadow};
+    width: 100%; /* Force gallery to respect container width */
+    max-width: 100%; /* Never exceed the container */
   }
   
   .image-gallery-content {
     position: relative;
+    max-width: 100%; /* Never exceed the container */
   }
   
   .image-gallery-slide-wrapper {
-    /* Fixed height container to prevent jumping */
+    /* Changed fixed height to responsive values */
     height: 52vh;
     max-height: 550px;
     display: flex;
     align-items: center;
     justify-content: center;
     background-color: ${({ theme }) => theme.colors.background.tertiary};
-    /* Removing padding to avoid letterbox effect */
+    width: 100%; /* Ensure full width */
+    max-width: 100%; /* Never exceed container width */
+    overflow: hidden; /* Prevent overflow */
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+      height: 45vh;
+      max-height: 450px;
+    }
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      height: 40vh;
+      max-height: 350px;
+    }
   }
   
   .image-gallery-slide {
@@ -33,6 +62,9 @@ export const GalleryContainer = styled.div`
     justify-content: center;
     height: 100%;
     transition: opacity ${({ theme }) => theme.transitions.medium};
+    width: 100%; /* Ensure slide takes full width */
+    max-width: 100%; /* Make sure slide doesn't exceed container */
+    overflow: hidden; /* Prevent overflow */
   }
   
   .image-gallery-slide .image-gallery-image {
@@ -40,7 +72,13 @@ export const GalleryContainer = styled.div`
     max-height: 100%;
     max-width: 100%;
     transition: opacity ${({ theme }) => theme.transitions.medium};
-    /* Removing border-radius to avoid letterbox effect */
+    /* Maintaining aspect ratio is important */
+    width: auto;
+    height: auto;
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+      max-width: 100%; /* Make sure image doesn't exceed container on smaller screens */
+    }
   }
 
   .image-gallery-slide video {
@@ -48,7 +86,13 @@ export const GalleryContainer = styled.div`
     max-width: 100%;
     object-fit: contain;
     transition: opacity ${({ theme }) => theme.transitions.medium};
-    /* Removing border-radius to avoid letterbox effect */
+    /* Maintaining aspect ratio for videos too */
+    width: auto;
+    height: auto;
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+      max-width: 100%; /* Make sure video doesn't exceed container on smaller screens */
+    }
   }
   
   .image-gallery-description {
@@ -65,6 +109,13 @@ export const GalleryContainer = styled.div`
     text-align: center;
     z-index: ${({ theme }) => theme.zIndex.overlay};
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      font-size: ${({ theme }) => theme.typography.fontSize.xs};
+      padding: 8px 12px;
+      bottom: 10px;
+      max-width: 90%;
+    }
   }
   
   .image-gallery-thumbnails-container {
@@ -74,11 +125,23 @@ export const GalleryContainer = styled.div`
     justify-content: center;
     background-color: ${({ theme }) => theme.colors.background.primary};
     border-top: 1px solid ${({ theme }) => theme.colors.ui.border};
+    
+    /* Make thumbnails container responsive */
+    @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+      padding: ${({ theme }) => theme.spacing.sm} 0;
+    }
+    
+    /* Ensure horizontal scrolling works well on mobile */
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      justify-content: flex-start;  /* Start alignment for better scrolling experience */
+      padding: ${({ theme }) => theme.spacing.xs} 0;
+    }
   }
   
   .image-gallery-thumbnail {
-    width: 80px !important;
-    height: 60px !important;
+    width: 80px !important; 
+    height: auto !important;
+    aspect-ratio: 4/3;
     margin: 0 ${({ theme }) => theme.spacing.xs};
     border-radius: ${({ theme }) => theme.borderRadius.md};
     overflow: hidden;
@@ -89,6 +152,15 @@ export const GalleryContainer = styled.div`
       transform: translateY(-2px);
       box-shadow: 0 4px 8px ${({ theme }) => theme.colors.ui.shadow};
     }
+    
+    /* Make thumbnails smaller on mobile */
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      width: 70px !important;
+    }
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+      width: 60px !important;
+    }
   }
   
   .image-gallery-thumbnail.active {
@@ -97,6 +169,7 @@ export const GalleryContainer = styled.div`
   }
   
   .image-gallery-thumbnail-image {
+    width: 100%;
     height: 100%;
     object-fit: cover;
   }
@@ -107,6 +180,11 @@ export const GalleryContainer = styled.div`
     
     &:hover {
       color: ${({ theme }) => theme.colors.primary};
+    }
+    
+    /* Make navigation icons more touch-friendly on mobile */
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      padding: 5px;
     }
   }
 
@@ -126,6 +204,11 @@ export const PositionIndicator = styled.div`
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
   z-index: ${({ theme }) => theme.zIndex.overlay};
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    padding: ${({ theme }) => theme.spacing.xs};
+    font-size: calc(${({ theme }) => theme.typography.fontSize.xs} - 1px);
+  }
 `;
 
 export const EmptyState = styled.div`
@@ -139,14 +222,31 @@ export const EmptyState = styled.div`
   background-color: ${({ theme }) => theme.colors.background.secondary};
   box-shadow: 0 4px 12px ${({ theme }) => theme.colors.ui.shadow};
   
+  @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+    height: 250px;
+  }
+  
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    height: 200px;
+    padding: ${({ theme }) => theme.spacing.md};
+  }
+  
   h3 {
     margin-bottom: ${({ theme }) => theme.spacing.sm};
     font-size: ${({ theme }) => theme.typography.fontSize.lg};
     color: ${({ theme }) => theme.colors.text.primary};
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      font-size: ${({ theme }) => theme.typography.fontSize.md};
+    }
   }
   
   p {
     color: ${({ theme }) => theme.colors.text.secondary};
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      font-size: ${({ theme }) => theme.typography.fontSize.sm};
+    }
   }
 `;
 
@@ -157,6 +257,8 @@ export const MediaContainer = styled.div`
   justify-content: center;
   align-items: center;
   position: relative;
+  max-width: 100%;
+  overflow: hidden;
 `;
 
 export const VideoElement = styled.video<{ $isPlaying: boolean }>`
@@ -166,6 +268,10 @@ export const VideoElement = styled.video<{ $isPlaying: boolean }>`
   background-color: ${({ $isPlaying, theme }) => 
     $isPlaying ? "transparent" : "rgba(0,0,0,0.02)"};
   cursor: pointer;
+  
+  /* Ensure videos are responsive */
+  width: auto;
+  height: auto;
 `;
 
 export const PlayPauseIndicator = styled.div`
@@ -182,9 +288,19 @@ export const PlayPauseIndicator = styled.div`
   align-items: center;
   justify-content: center;
   
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    width: 50px;
+    height: 50px;
+  }
+  
   svg {
     width: 30px;
     height: 30px;
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      width: 25px;
+      height: 25px;
+    }
   }
 `;
 
@@ -194,4 +310,8 @@ export const StyledProgressiveImage = styled.img<{ $loaded: boolean }>`
   object-fit: contain;
   transition: opacity ${({ theme }) => theme.transitions.medium};
   opacity: ${({ $loaded }) => ($loaded ? "1" : "0.5")};
+  
+  /* Ensure images are responsive */
+  width: auto;
+  height: auto;
 `; 
