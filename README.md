@@ -1,88 +1,48 @@
 # Pepper Place: Dog Photo Timeline
 
-A beautiful interactive timeline to view photos of Pepper (the dog) throughout the years.
+This repo contains the code for an interactive timeline of Pepper the dog’s photos. It allows you to view a chronological gallery of images and videos, and includes a Python script to process and upload new media files to MinIO.
 
-## Features
+## What This Project Does
 
-- Timeline slider to navigate between years
-- Photo gallery with slideshow and fullscreen capabilities
-- Responsive design that works on all devices
-- Connected to MinIO (S3-compatible storage) for photo storage
+• Provides a React-based UI that displays Pepper’s photos and videos in a visually appealing timeline.  
+• Uses a Python upload script to handle photo/video ingestion, auto-organization, and manifest generation for the frontend.  
+• Relies on MinIO (or any S3-compatible storage) to host media files and the generated manifest.json for easy retrieval by the React client.  
 
-### Photo Organization
+## Core Features & Flow
 
-Photos and videos are stored in MinIO with the following organization:
+1. Photo Upload & Processing  
+   – The Python script (python_stuff/upload_photos.py) reads media from local directories, extracts EXIF metadata to determine date, converts HEIC to JPEG, and generates thumbnails or video frames as needed.  
+   – It uploads both the original (or converted) media and the thumbnail to MinIO.  
+   – Finally, it generates and uploads a manifest.json file with references to all photos (ID, path, year, etc.).  
 
-```
-media/YYYY/MM/file_hash.ext
-thumbnails/YYYY/MM/file_hash.jpg
-```
+2. React Frontend  
+   – The frontend (in frontend/src) fetches manifest.json and produces a timeline.  
+   – The Timeline component in components/Timeline.tsx manages year-based navigation.  
+   – The PhotoGallery component in components/PhotoGallery.tsx displays photos/videos in a carousel with optional fullscreen mode.  
+   – The application loads quickly by caching the manifest and performing lazy image loading where possible.
 
-Each file is processed as follows:
-- HEIC/HEIF images are automatically converted to JPEG for web compatibility
-- All other image formats (JPG, PNG) are preserved in their original format
-- Videos (MP4, MOV) are stored in their original format
-- All media types have thumbnails generated and stored as JPGs
+3. Timeline & Photo Navigation  
+   – Photos are organized by date. The timeline groups photos by year and displays a slider UI for jumping to different periods.  
+   – The user can select a year in the timeline, and the PhotoGallery automatically navigates to the first photo of that year.  
 
-For example:
-```
-media/2020/01/a1b2c3d4e5.jpg       # A regular JPG or converted HEIC image
-media/2021/06/f6g7h8i9j0.mp4       # A video file
-thumbnails/2020/01/a1b2c3d4e5.jpg   # Thumbnail for the image
-thumbnails/2021/06/f6g7h8i9j0.jpg   # Thumbnail for the video (extracted frame)
-```
+4. Common Places to Fix or Extend  
+   – Modifying photo or video rendering (PhotoGallery.tsx)  
+   – Adjusting how date metadata is parsed (upload_photos.py)  
+   – Adding extra fields/tags in the manifest generation or timeline logic (upload_photos.py + PhotoService.ts)  
+   – Tuning performance for large media sets or customizing the sorting logic in the React build.  
 
-The filenames are based on a hash of the file contents, ensuring uniqueness while removing original filenames that might contain personally identifiable information.
+## Helpful Notes for Debugging
 
-### Running the App
+• The manifest.json is the single source of truth for all photo data. If you see incorrect or missing photos in the UI, check that manifest is generated and uploaded correctly.  
+• Video playback issues often relate to the browser’s supported formats. The code attempts to auto-play and loop certain video types (e.g., MP4).  
+• If you need to alter the thumbnail creation (e.g., different poster frame for videos), edit the create_video_thumbnail function in upload_photos.py.  
 
-In development mode:
-```
-npm start
-```
+## Next Steps & Ideas
 
-Building for production:
-```
-npm run build
-```
+• Tagging and searching photos directly in the UI.  
+• Improving the video handling flow (e.g., detecting failure and showing fallback images).  
+• Enhancing the timeline with transitions or extended metadata (location, descriptions).  
 
-## Photo Upload Tool
+---
 
-The repository includes a photo upload script that processes media files and uploads them to MinIO with proper organization.
-
-### Features
-- Automatic organization by date (extracted from EXIF metadata)
-- HEIC/HEIF conversion to web-friendly JPEG format
-- Thumbnail generation for all media types (including video frames)
-- Progress tracking with upload speed metrics
-- Error handling and retry capabilities
-
-### Usage
-```bash
-# Basic usage
-cd python_stuff
-uv run python upload_photos.py
-
-# With custom directory
-uv run python upload_photos.py --dir /path/to/photos
-
-# Skip video thumbnail generation (faster)
-uv run python upload_photos.py --skip-video-thumbnails
-```
-
-### Requirements
-- Python 3.8+
-- MinIO server
-- ffmpeg (for video processing)
-- exiftool (for metadata extraction)
-- Required Python packages (install with UV):
-  ```
-  uv pip install minio pillow python-dotenv tqdm
-  ```
-
-## Next Steps
-
-- Add tagging and search functionality
-- Implement image optimization
-- Add animation and transitions between years
-- Create an admin interface for uploading and tagging photos
+> Use this document as quick project context to identify the key components of Pepper Place and the usual spots where you’ll add or fix features. If something’s unclear, look at the code comments in the relevant Python or TypeScript files—those will often guide you to the right place for deeper changes.
