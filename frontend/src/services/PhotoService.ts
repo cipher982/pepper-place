@@ -1,4 +1,15 @@
 import { Photo, MinioConfig, TimelinePeriod, Manifest } from "../types";
+import { extractDateFromPath } from "../utils/media";
+
+// Single object for cache constants
+const CACHE = {
+  KEYS: {
+    MANIFEST: "pepper_photos_manifest",
+    TIMESTAMP: "pepper_photos_manifest_timestamp"
+  },
+  // Cache duration in milliseconds (24 hours)
+  DURATION: 24 * 60 * 60 * 1000
+};
 
 // Constants for paths
 const PATHS = {
@@ -6,16 +17,6 @@ const PATHS = {
   THUMBNAIL_PREFIX: "thumbnails/",
   MANIFEST_PATH: "manifest.json"
 };
-
-// Constants for cache
-const CACHE_KEYS = {
-  MANIFEST: "pepper_photos_manifest",
-  MANIFEST_TIMESTAMP: "pepper_photos_manifest_timestamp",
-  MANIFEST_GENERATED_AT: "pepper_photos_manifest_generated_at"
-};
-
-// Cache duration in milliseconds (24 hours)
-const CACHE_DURATION = 24 * 60 * 60 * 1000;
 
 class PhotoService {
   private bucket: string;
@@ -37,11 +38,11 @@ class PhotoService {
       : `${endpoint}/${this.bucket}`;
   }
 
-  // Try to load manifest from local storage
+  // Try to load manifest from local storage - simplified
   private loadManifestFromCache(): Manifest | null {
     try {
-      const cachedTimestamp = localStorage.getItem(CACHE_KEYS.MANIFEST_TIMESTAMP);
-      const cachedManifest = localStorage.getItem(CACHE_KEYS.MANIFEST);
+      const cachedTimestamp = localStorage.getItem(CACHE.KEYS.TIMESTAMP);
+      const cachedManifest = localStorage.getItem(CACHE.KEYS.MANIFEST);
       
       if (!cachedTimestamp || !cachedManifest) {
         return null;
@@ -51,11 +52,10 @@ class PhotoService {
       const timestamp = parseInt(cachedTimestamp, 10);
       const now = Date.now();
       
-      if (now - timestamp > CACHE_DURATION) {
+      if (now - timestamp > CACHE.DURATION) {
         // Cache expired, clear it
-        localStorage.removeItem(CACHE_KEYS.MANIFEST);
-        localStorage.removeItem(CACHE_KEYS.MANIFEST_TIMESTAMP);
-        localStorage.removeItem(CACHE_KEYS.MANIFEST_GENERATED_AT);
+        localStorage.removeItem(CACHE.KEYS.MANIFEST);
+        localStorage.removeItem(CACHE.KEYS.TIMESTAMP);
         return null;
       }
       
@@ -73,52 +73,19 @@ class PhotoService {
     }
   }
 
-  // Save manifest to local storage
+  // Save manifest to local storage - simplified
   private saveManifestToCache(manifest: Manifest): void {
     try {
-      localStorage.setItem(CACHE_KEYS.MANIFEST, JSON.stringify(manifest));
-      localStorage.setItem(CACHE_KEYS.MANIFEST_TIMESTAMP, Date.now().toString());
-      // Store the generated_at timestamp separately for quick comparison
-      if (manifest.generated_at) {
-        localStorage.setItem(CACHE_KEYS.MANIFEST_GENERATED_AT, manifest.generated_at);
-      }
+      localStorage.setItem(CACHE.KEYS.MANIFEST, JSON.stringify(manifest));
+      localStorage.setItem(CACHE.KEYS.TIMESTAMP, Date.now().toString());
     } catch (error) {
       console.error("Error saving manifest to cache:", error);
       // If we can't save to localStorage (e.g., it's full), just proceed without caching
     }
   }
 
-  // Fetch only the generated_at field from the manifest to check for updates
-  private async fetchRemoteGeneratedAt(): Promise<string | null> {
-    try {
-      const manifestUrl = `${this.baseUrl}/${PATHS.MANIFEST_PATH}`;
-      
-      // Set no-cache headers to avoid browser caching issues
-      const options = {
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0"
-        }
-      };
-      
-      const response = await fetch(manifestUrl, options);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch manifest: ${response.status} ${response.statusText}`);
-      }
-      
-      // Parse just enough to get the generated_at field
-      const data = await response.json();
-      return data.generated_at || null;
-    } catch (error) {
-      console.error("Error fetching remote generated_at:", error);
-      return null;
-    }
-  }
-
-  // Fetch the complete manifest and cache it
-  private async fetchAndCacheNewManifest(): Promise<Manifest> {
+  // Fetch the complete manifest and cache it - simplified
+  private async fetchManifest(): Promise<Manifest> {
     try {
       const manifestUrl = `${this.baseUrl}/${PATHS.MANIFEST_PATH}`;
       
@@ -138,13 +105,11 @@ class PhotoService {
         throw new Error(`Failed to fetch manifest: ${response.status} ${response.statusText}`);
       }
       
-      // Try to parse as JSON first
+      // Try to parse as JSON
       let manifest: Manifest;
       try {
         manifest = await response.json() as Manifest;
       } catch (parseError) {
-        // If we got an HTML response instead of JSON, it's likely we're hitting a web server
-        // that's returning an HTML error page or a redirect page
         const text = await response.clone().text();
         const preview = text.substring(0, 100);
         throw new Error(`Expected JSON but received: ${preview}...`);
@@ -166,7 +131,7 @@ class PhotoService {
     }
   }
 
-  // Fetch the manifest file
+  // Get the manifest file - simplified
   async getManifest(): Promise<Manifest> {
     // Return cached manifest in memory if available
     if (this.manifestCache) {
@@ -176,29 +141,12 @@ class PhotoService {
     // Try to load from local storage first
     const cachedManifest = this.loadManifestFromCache();
     if (cachedManifest) {
-      // Check if the remote manifest is newer than our cached one
-      const cachedGeneratedAt = localStorage.getItem(CACHE_KEYS.MANIFEST_GENERATED_AT);
-      if (cachedGeneratedAt) {
-        try {
-          // Compare with the remote version
-          const remoteGeneratedAt = await this.fetchRemoteGeneratedAt();
-          
-          // If the cached and remote generated_at values match, use the cached manifest
-          if (remoteGeneratedAt && remoteGeneratedAt === cachedGeneratedAt) {
-            console.log("Using cached manifest from local storage (same generated_at)");
-            this.manifestCache = cachedManifest;
-            return cachedManifest;
-          } else {
-            console.log("Remote manifest is newer. Fetching updated manifest.");
-          }
-        } catch (error) {
-          console.warn("Could not fetch remote generated_at. Falling back to full fetch.");
-        }
-      }
+      this.manifestCache = cachedManifest;
+      return cachedManifest;
     }
 
-    // If no valid local cache or the cache is outdated, fetch the full manifest
-    return this.fetchAndCacheNewManifest();
+    // Fetch fresh manifest if not in cache
+    return this.fetchManifest();
   }
 
   async listPhotos(): Promise<Photo[]> {

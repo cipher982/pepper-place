@@ -38,69 +38,34 @@ export default function usePhotoNavigation({
   // Get current photo
   const currentPhoto = sortedPhotos.current[currentIndex];
 
-  // Navigate to next photo - simplified
+  // Navigate to next photo
   const nextPhoto = useCallback(() => {
     if (sortedPhotos.current.length === 0) return;
     
-    // Set direction and update index
     lastDirection.current = "forward";
-    
-    // Update the index
-    setCurrentIndex(prevIndex => {
-      return prevIndex + 1 >= sortedPhotos.current.length ? 0 : prevIndex + 1;
-    });
+    setCurrentIndex(prevIndex => 
+      prevIndex + 1 >= sortedPhotos.current.length ? 0 : prevIndex + 1);
   }, []);
 
-  // Navigate to previous photo - simplified
+  // Navigate to previous photo
   const prevPhoto = useCallback(() => {
     if (sortedPhotos.current.length === 0) return;
     
-    // Set direction
     lastDirection.current = "backward";
-    
-    // Update the index
-    setCurrentIndex(prevIndex => {
-      return prevIndex - 1 < 0 ? sortedPhotos.current.length - 1 : prevIndex - 1;
-    });
+    setCurrentIndex(prevIndex => 
+      prevIndex - 1 < 0 ? sortedPhotos.current.length - 1 : prevIndex - 1);
   }, []);
 
-  // Jump to specific year - simplified to focus on finding the right photo
+  // Jump to specific year - simplified approach
   const jumpToYear = useCallback((yearValue: number) => {
     if (sortedPhotos.current.length === 0) return;
     
     // For integer year values, find the first photo of that year
-    if (Number.isInteger(yearValue)) {
-      const yearIndex = sortedPhotos.current.findIndex(photo => photo.year === yearValue);
-      if (yearIndex >= 0) {
-        setCurrentIndex(yearIndex);
-        return;
-      }
-    }
+    const targetYear = Math.floor(yearValue);
+    const yearIndex = sortedPhotos.current.findIndex(photo => photo.year === targetYear);
     
-    // For floating-point year values, extract year and month components
-    const year = Math.floor(yearValue);
-    const monthFraction = yearValue - year;
-    const targetMonth = Math.round(monthFraction * 12) || 1; // If 0, use January (1)
-    
-    // Find the photo closest to the specified year and month
-    let bestMatchIndex = -1;
-    let bestMatchDiff = Infinity;
-    
-    sortedPhotos.current.forEach((photo, index) => {
-      // Calculate how close this photo is to the target date
-      // Weight year difference more heavily than month difference
-      const yearDiff = Math.abs(photo.year - year) * 12;
-      const monthDiff = Math.abs(photo.month - targetMonth);
-      const totalDiff = yearDiff + monthDiff;
-      
-      if (totalDiff < bestMatchDiff) {
-        bestMatchDiff = totalDiff;
-        bestMatchIndex = index;
-      }
-    });
-    
-    if (bestMatchIndex >= 0) {
-      setCurrentIndex(bestMatchIndex);
+    if (yearIndex >= 0) {
+      setCurrentIndex(yearIndex);
     }
   }, []);
 
@@ -120,7 +85,7 @@ export default function usePhotoNavigation({
   // Set up keyboard event listeners for arrow keys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore keyboard events if the event originates from an input or contentEditable element
+      // Ignore keyboard events from form elements
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
@@ -129,12 +94,11 @@ export default function usePhotoNavigation({
         return;
       }
       
-      // Use the raw event, not a synthetic one
       if (e.key === "ArrowRight") {
-        e.preventDefault(); // Prevent default browser behavior
+        e.preventDefault();
         nextPhoto();
       } else if (e.key === "ArrowLeft") {
-        e.preventDefault(); // Prevent default browser behavior
+        e.preventDefault();
         prevPhoto();
       }
     };
@@ -142,11 +106,6 @@ export default function usePhotoNavigation({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [nextPhoto, prevPhoto]);
-
-  // Get navigation direction
-  const getNavigationDirection = useCallback(() => {
-    return lastDirection.current;
-  }, []);
 
   return {
     currentPhoto,
@@ -156,7 +115,7 @@ export default function usePhotoNavigation({
     prevPhoto,
     jumpToYear,
     getPosition,
-    getNavigationDirection,
+    getNavigationDirection: () => lastDirection.current,
     totalPhotos: sortedPhotos.current.length
   };
 } 

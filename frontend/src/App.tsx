@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Timeline from "./components/Timeline";
 import PhotoGallery from "./components/PhotoGallery";
 import usePhotoData from "./hooks/usePhotoData";
@@ -13,7 +13,7 @@ import {
 } from "./styles/App.styles";
 
 function App() {
-  // Use useMemo to prevent config recreation on each render
+  // Use config from environment variables
   const minioConfig = useMemo(() => ({
     endpoint: process.env.REACT_APP_S3_ENDPOINT || "http://localhost:9000",
     bucket: process.env.REACT_APP_S3_BUCKET || "pepper-photos-simple",
@@ -21,10 +21,10 @@ function App() {
   
   const { photos, timeline, loading, error } = usePhotoData(minioConfig);
   
-  // State to track if year change is coming from timeline vs photo nav
+  // Flag to track if year change is from timeline vs photo navigation
   const [isUserDraggingTimeline, setIsUserDraggingTimeline] = useState(false);
   
-  // Initialize photo navigation hook to manage global photo index
+  // Photo navigation hook
   const {
     currentPhoto,
     currentIndex,
@@ -32,15 +32,14 @@ function App() {
     getPosition
   } = usePhotoNavigation({ photos });
   
-  // Current year is derived from the current photo in the navigation
+  // Current year derived from the current photo
   const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
   
-  // Update current year when current photo changes - only if not dragging timeline
+  // Update current year when photo changes (if not dragging timeline)
   useEffect(() => {
-    // Skip if explicitly changing via timeline or photo isn't loaded yet
     if (isUserDraggingTimeline || !currentPhoto) {
       if (!currentPhoto && timeline.length > 0) {
-        // If no current photo but we have timeline data, use the most recent year
+        // Without a current photo, use the most recent year from timeline
         const years = timeline.map(period => period.year);
         const latestYear = Math.max(...years);
         setCurrentYear(latestYear);
@@ -48,13 +47,13 @@ function App() {
       return;
     }
     
-    // Update the year if it's different
+    // Update the year if different from current photo
     if (currentYear !== currentPhoto.year) {
       setCurrentYear(currentPhoto.year);
     }
   }, [currentPhoto, timeline, currentYear, isUserDraggingTimeline]);
   
-  // Handle year change from Timeline component - direct and simple
+  // Handle year change from Timeline
   const handleYearChange = (year: number) => {
     setIsUserDraggingTimeline(true);
     setCurrentYear(year);
@@ -63,8 +62,33 @@ function App() {
     setTimeout(() => setIsUserDraggingTimeline(false), 100);
   };
 
-  // Get position information
+  // Get position information for indicator
   const position = getPosition();
+
+  // Render app content based on loading/error state
+  const renderContent = () => {
+    if (loading) {
+      return <LoadingState>Loading Pepper's photos...</LoadingState>;
+    }
+    
+    if (error) {
+      return <ErrorState>{error}</ErrorState>;
+    }
+    
+    return (
+      <TimelineGalleryContainer>
+        <Timeline 
+          periods={timeline} 
+          currentYear={currentYear}
+          onYearChange={handleYearChange}
+          currentPhotoIndex={position.index}
+          totalPhotos={position.total}
+        />
+        
+        <PhotoGallery photos={photos} />
+      </TimelineGalleryContainer>
+    );
+  };
 
   return (
     <AppContainer>
@@ -73,29 +97,7 @@ function App() {
         <p>A timeline of our amazing dog's adventures</p>
       </Header>
       
-      {loading ? (
-        <LoadingState>Loading Pepper's photos...</LoadingState>
-      ) : error ? (
-        <ErrorState>{error}</ErrorState>
-      ) : (
-        <TimelineGalleryContainer>
-          <Timeline 
-            periods={timeline} 
-            currentYear={currentYear}
-            onYearChange={handleYearChange}
-            currentPhotoIndex={position.index}
-            totalPhotos={position.total}
-          />
-          
-          <PhotoGallery 
-            photos={photos}
-            // Don't pass initialYear to avoid another source of updates
-            // initialYear={currentYear}
-            // Don't pass onYearChange to avoid circular updates
-            // onYearChange={(year) => {...}}
-          />
-        </TimelineGalleryContainer>
-      )}
+      {renderContent()}
       
       <Footer>
         <p>Created with love for Pepper 🐾</p>

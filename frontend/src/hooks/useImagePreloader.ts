@@ -1,20 +1,21 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Photo } from "../types";
+import { detectMediaType } from "../utils/media";
 
 // Number of images to preload before and after current index
 const DEFAULT_BUFFER_SIZE = 3;
 
 // Helper function to detect media type
-const detectMediaType = (url: string): "image" | "video" => {
-  const videoExtensions = [".mp4", ".webm", ".mov", ".avi", ".mkv"];
-  const urlLower = url.toLowerCase();
-  
-  if (videoExtensions.some(ext => urlLower.endsWith(ext))) {
-    return "video";
-  }
-  
-  return "image";
-};
+// const detectMediaType = (url: string): "image" | "video" => {
+//   const videoExtensions = [".mp4", ".webm", ".mov", ".avi", ".mkv"];
+//   const urlLower = url.toLowerCase();
+//   
+//   if (videoExtensions.some(ext => urlLower.endsWith(ext))) {
+//     return "video";
+//   }
+//   
+//   return "image";
+// };
 
 interface UseImagePreloaderProps {
   photos: Photo[];
