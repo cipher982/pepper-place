@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import styled from "styled-components";
 import Timeline from "./components/Timeline";
 import PhotoGallery from "./components/PhotoGallery";
 import usePhotoData from "./hooks/usePhotoData";
+import usePhotoNavigation from "./hooks/usePhotoNavigation";
 import "./App.css";
 
 const AppContainer = styled.div`
@@ -67,7 +68,75 @@ function App() {
     bucket: process.env.REACT_APP_S3_BUCKET || "pepper-photos-simple",
   }), []);
   
-  const { photos, timeline, loading, error, currentYear, setCurrentYear } = usePhotoData(minioConfig);
+  const { photos, timeline, loading, error } = usePhotoData(minioConfig);
+  
+  // Initialize photo navigation hook to manage global photo index
+  const {
+    currentPhoto,
+    currentIndex,
+    jumpToYear,
+    getPosition
+  } = usePhotoNavigation({ photos });
+  
+  // Current year is derived from the current photo in the navigation
+  const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
+  
+  // Debounced year setting for photo changes
+  // This prevents rapid toggling between values
+  const pendingYearUpdate = useRef<NodeJS.Timeout | null>(null);
+  const lastHandledPhoto = useRef<string | null>(null);
+  
+  // Update current year when current photo changes
+  useEffect(() => {
+    // Skip if photo isn't loaded yet
+    if (!currentPhoto) {
+      if (timeline.length > 0) {
+        // If no current photo but we have timeline data, use the most recent year
+        const years = timeline.map(period => period.year);
+        const latestYear = Math.max(...years);
+        setCurrentYear(latestYear);
+      }
+      return;
+    }
+    
+    // Avoid handling same photo twice
+    if (lastHandledPhoto.current === currentPhoto.id) return;
+    lastHandledPhoto.current = currentPhoto.id;
+    
+    // Clear any pending updates 
+    if (pendingYearUpdate.current) {
+      clearTimeout(pendingYearUpdate.current);
+    }
+    
+    // Set a longer delay before updating the year (300ms)
+    // This prevents flickering and rapid changes during keyboard navigation
+    pendingYearUpdate.current = setTimeout(() => {
+      // Only set if actually different to prevent unnecessary renders
+      if (currentYear !== currentPhoto.year) {
+        setCurrentYear(currentPhoto.year);
+      }
+      pendingYearUpdate.current = null;
+    }, 300);
+    
+    // Cleanup on unmount
+    return () => {
+      if (pendingYearUpdate.current) {
+        clearTimeout(pendingYearUpdate.current);
+      }
+    };
+  }, [currentPhoto, timeline, currentYear]);
+  
+  // Handle year change from Timeline component
+  const handleYearChange = (year: number) => {
+    // Directly jump to the year without changing state first
+    jumpToYear(year);
+    
+    // The currentPhoto effect will handle updating currentYear
+    // after the jump completes
+  };
+
+  // Get position information
+  const position = getPosition();
 
   return (
     <AppContainer>
@@ -85,12 +154,15 @@ function App() {
           <Timeline 
             periods={timeline} 
             currentYear={currentYear}
-            onYearChange={setCurrentYear}
+            onYearChange={handleYearChange}
+            currentPhotoIndex={position.index}
+            totalPhotos={position.total}
           />
           
           <PhotoGallery 
-            photos={photos} 
-            year={currentYear} 
+            photos={photos}
+            initialYear={currentYear}
+            onYearChange={setCurrentYear}
           />
         </TimelineGalleryContainer>
       )}

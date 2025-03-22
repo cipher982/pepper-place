@@ -1,12 +1,15 @@
-import React from "react";
+import React, { useEffect } from "react";
 import ImageGallery from "react-image-gallery";
 import "react-image-gallery/styles/css/image-gallery.css";
 import styled from "styled-components";
 import { Photo } from "../types";
+import usePhotoNavigation from "../hooks/usePhotoNavigation";
+import useImagePreloader from "../hooks/useImagePreloader";
 
 interface PhotoGalleryProps {
   photos: Photo[];
-  year: number;
+  initialYear?: number;
+  onYearChange?: (year: number) => void;
 }
 
 const GalleryContainer = styled.div`
@@ -40,18 +43,21 @@ const GalleryContainer = styled.div`
     align-items: center;
     justify-content: center;
     height: 100%;
+    transition: opacity 0.3s ease;
   }
   
   .image-gallery-slide .image-gallery-image {
     object-fit: contain;
     max-height: 100%;
     max-width: 100%;
+    transition: opacity 0.3s ease;
   }
 
   .image-gallery-slide video {
     max-height: 100%;
     max-width: 100%;
     object-fit: contain;
+    transition: opacity 0.3s ease;
   }
   
   .image-gallery-description {
@@ -98,6 +104,22 @@ const GalleryContainer = styled.div`
   .image-gallery-icon {
     filter: drop-shadow(0px 0px 3px rgba(0, 0, 0, 0.3));
   }
+
+  .image-loading {
+    opacity: 0.5;
+  }
+`;
+
+const PositionIndicator = styled.div`
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 10;
 `;
 
 const EmptyState = styled.div`
@@ -247,12 +269,106 @@ const VideoSlide = ({ url, description }: { url: string; description?: string })
   );
 };
 
-const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, year }) => {
-  // Filter photos by the selected year
-  const filteredPhotos = photos.filter(photo => photo.year === year);
+// Image component with progressive loading
+const ProgressiveImage = ({ 
+  src, 
+  thumbnailSrc,
+  alt,
+  isImageCached
+}: { 
+  src: string;
+  thumbnailSrc: string;
+  alt: string;
+  isImageCached: (url: string) => boolean;
+}) => {
+  const [loaded, setLoaded] = React.useState(isImageCached(src));
+  const [currentSrc, setCurrentSrc] = React.useState(loaded ? src : thumbnailSrc);
   
+  useEffect(() => {
+    // If the image is already cached, use it directly
+    if (isImageCached(src)) {
+      setCurrentSrc(src);
+      setLoaded(true);
+      return;
+    }
+    
+    // Otherwise, start with thumbnail and load the full image
+    setCurrentSrc(thumbnailSrc);
+    setLoaded(false);
+    
+    const img = new Image();
+    img.onload = () => {
+      setCurrentSrc(src);
+      setLoaded(true);
+    };
+    img.src = src;
+  }, [src, thumbnailSrc, isImageCached]);
+
+  return (
+    <img
+      src={currentSrc}
+      alt={alt}
+      className={!loaded ? "image-loading" : ""}
+      style={{ 
+        maxHeight: "100%", 
+        maxWidth: "100%", 
+        objectFit: "contain",
+        transition: "opacity 0.3s ease"
+      }}
+    />
+  );
+};
+
+const PhotoGallery: React.FC<PhotoGalleryProps> = ({ 
+  photos, 
+  initialYear,
+  onYearChange
+}) => {
+  // Initialize the photo navigation
+  const {
+    currentPhoto,
+    currentIndex,
+    setCurrentIndex,
+    nextPhoto,
+    prevPhoto,
+    getPosition,
+    getNavigationDirection,
+    totalPhotos
+  } = usePhotoNavigation({ photos });
+
+  // Initialize the image preloader
+  const { isImageCached } = useImagePreloader({
+    photos,
+    currentIndex,
+    navigationDirection: getNavigationDirection()
+  });
+
+  // Notify parent component when current year changes
+  useEffect(() => {
+    if (currentPhoto && onYearChange) {
+      onYearChange(currentPhoto.year);
+    }
+  }, [currentPhoto, onYearChange]);
+
+  // Handle internal gallery navigation to sync with our global index
+  const handleSlideChange = (newIndex: number) => {
+    setCurrentIndex(newIndex);
+  };
+
+  if (photos.length === 0) {
+    return (
+      <EmptyState>
+        <h3>No photos available</h3>
+        <p>Please check that photos have been uploaded</p>
+      </EmptyState>
+    );
+  }
+
+  // Position information for the indicator
+  const position = getPosition();
+
   // Format photos for the ImageGallery component
-  const galleryItems = filteredPhotos.map(photo => {
+  const galleryItems = photos.map(photo => {
     const mediaType = detectMediaType(photo.url);
     const isVideo = mediaType === 'video';
     
@@ -275,17 +391,12 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, year }) => {
     };
   });
 
-  if (galleryItems.length === 0) {
-    return (
-      <EmptyState>
-        <h3>No photos for {year}</h3>
-        <p>Try selecting a different year from the timeline</p>
-      </EmptyState>
-    );
-  }
-
   return (
     <GalleryContainer>
+      <PositionIndicator>
+        {position.year} (Photo {position.index + 1} of {position.total})
+      </PositionIndicator>
+      
       <ImageGallery
         items={galleryItems}
         showPlayButton={false}
@@ -293,16 +404,18 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, year }) => {
         slideInterval={3000}
         thumbnailPosition="bottom"
         showNav={true}
-        lazyLoad={true}
+        lazyLoad={false} // Disable built-in lazy loading, we're doing our own
         additionalClass="custom-image-gallery"
         useBrowserFullscreen={false}
+        startIndex={currentIndex}
+        onSlide={handleSlideChange}
         renderItem={(item: any) => {
-          // If the item has a custom renderItem function, use it
+          // If the item has a custom renderItem function, use it (for videos)
           if (item.renderItem && typeof item.renderItem === 'function') {
             return item.renderItem();
           }
           
-          // Default rendering for images
+          // Default rendering for images with progressive loading
           return (
             <div className="media-container" style={{ 
               width: "100%", 
@@ -311,14 +424,11 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, year }) => {
               justifyContent: "center", 
               alignItems: "center"
             }}>
-              <img
+              <ProgressiveImage
                 src={item.original}
+                thumbnailSrc={item.thumbnail}
                 alt={item.originalAlt}
-                style={{ 
-                  maxHeight: "100%", 
-                  maxWidth: "100%", 
-                  objectFit: "contain" 
-                }}
+                isImageCached={isImageCached}
               />
             </div>
           );

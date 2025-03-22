@@ -7,6 +7,15 @@ const PATHS = {
   MANIFEST_PATH: "manifest.json"
 };
 
+// Constants for cache
+const CACHE_KEYS = {
+  MANIFEST: "pepper_photos_manifest",
+  MANIFEST_TIMESTAMP: "pepper_photos_manifest_timestamp"
+};
+
+// Cache duration in milliseconds (24 hours)
+const CACHE_DURATION = 24 * 60 * 60 * 1000;
+
 class PhotoService {
   private bucket: string;
   private baseUrl: string;
@@ -27,11 +36,65 @@ class PhotoService {
       : `${endpoint}/${this.bucket}`;
   }
 
+  // Try to load manifest from local storage
+  private loadManifestFromCache(): Manifest | null {
+    try {
+      const cachedTimestamp = localStorage.getItem(CACHE_KEYS.MANIFEST_TIMESTAMP);
+      const cachedManifest = localStorage.getItem(CACHE_KEYS.MANIFEST);
+      
+      if (!cachedTimestamp || !cachedManifest) {
+        return null;
+      }
+
+      // Check if cache is still valid
+      const timestamp = parseInt(cachedTimestamp, 10);
+      const now = Date.now();
+      
+      if (now - timestamp > CACHE_DURATION) {
+        // Cache expired, clear it
+        localStorage.removeItem(CACHE_KEYS.MANIFEST);
+        localStorage.removeItem(CACHE_KEYS.MANIFEST_TIMESTAMP);
+        return null;
+      }
+      
+      // Parse and validate the manifest structure
+      const manifest = JSON.parse(cachedManifest) as Manifest;
+      
+      if (!manifest || !Array.isArray(manifest.photos) || !Array.isArray(manifest.timeline)) {
+        return null;
+      }
+      
+      return manifest;
+    } catch (error) {
+      console.error("Error loading manifest from cache:", error);
+      return null;
+    }
+  }
+
+  // Save manifest to local storage
+  private saveManifestToCache(manifest: Manifest): void {
+    try {
+      localStorage.setItem(CACHE_KEYS.MANIFEST, JSON.stringify(manifest));
+      localStorage.setItem(CACHE_KEYS.MANIFEST_TIMESTAMP, Date.now().toString());
+    } catch (error) {
+      console.error("Error saving manifest to cache:", error);
+      // If we can't save to localStorage (e.g., it's full), just proceed without caching
+    }
+  }
+
   // Fetch the manifest file
   async getManifest(): Promise<Manifest> {
-    // Return cached manifest if available
+    // Return cached manifest in memory if available
     if (this.manifestCache) {
       return this.manifestCache;
+    }
+
+    // Try to load from local storage first
+    const cachedManifest = this.loadManifestFromCache();
+    if (cachedManifest) {
+      this.manifestCache = cachedManifest;
+      console.log("Using cached manifest from local storage");
+      return cachedManifest;
     }
 
     try {
@@ -73,7 +136,10 @@ class PhotoService {
         throw new Error("Invalid manifest format: missing photos or timeline arrays");
       }
       
+      // Cache in memory and local storage
       this.manifestCache = manifest;
+      this.saveManifestToCache(manifest);
+      
       return manifest;
     } catch (error) {
       console.error("Error fetching manifest:", error);
