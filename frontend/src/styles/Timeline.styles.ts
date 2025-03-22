@@ -40,11 +40,12 @@ export const StyledTrack = styled.div<{ $index: number }>`
   position: relative;
 `;
 
-export const YearMarker = styled.div<{ $active: boolean }>`
+export const YearMarker = styled.div<{ $active: boolean; $position: number }>`
   position: absolute;
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
   color: ${({ $active, theme }) => $active ? theme.colors.primary : theme.colors.text.secondary};
   bottom: -25px;
+  left: ${({ $position }) => `${$position}%`};
   transform: translateX(-50%);
   font-weight: ${({ $active, theme }) => $active ? theme.typography.fontWeight.bold : theme.typography.fontWeight.normal};
   z-index: ${({ theme }) => theme.zIndex.base};
@@ -60,16 +61,17 @@ export const YearMarker = styled.div<{ $active: boolean }>`
   }
 `;
 
-export const TickMark = styled.div`
+export const TickMark = styled.div<{ $position: number }>`
   position: absolute;
   width: 2px;
   height: 8px;
   background-color: #aaa;
   bottom: -4px;
+  left: ${({ $position }) => `${$position}%`};
   transform: translateX(-50%);
 `;
 
-export const YearTooltip = styled.div`
+export const YearTooltip = styled.div<{ $position: number }>`
   position: absolute;
   background-color: ${({ theme }) => theme.colors.ui.overlay};
   color: ${({ theme }) => theme.colors.text.light};
@@ -77,6 +79,7 @@ export const YearTooltip = styled.div`
   border-radius: ${({ theme }) => theme.borderRadius.md};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
   bottom: 50px;
+  left: ${({ $position }) => `${$position}px`};
   transform: translateX(-50%);
   z-index: ${({ theme }) => theme.zIndex.tooltip};
   pointer-events: none;

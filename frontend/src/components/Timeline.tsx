@@ -127,7 +127,7 @@ const Timeline: React.FC<TimelineProps> = ({
           return (
             <TickMark 
               key={`tick-${year}`}
-              style={{ left: `${position}%` }}
+              $position={position}
             />
           );
         })}
@@ -140,7 +140,7 @@ const Timeline: React.FC<TimelineProps> = ({
           return (
             <YearMarker 
               key={`year-${year}`}
-              style={{ left: `${position}%` }}
+              $position={position}
               $active={isActive}
               onClick={() => handleYearClick(year)}
             >
@@ -166,7 +166,7 @@ const Timeline: React.FC<TimelineProps> = ({
           renderThumb={renderThumb}
         />
         {showTooltip && (
-          <YearTooltip style={{ left: `${tooltipPosition}px` }}>
+          <YearTooltip $position={tooltipPosition}>
             {displayYearText}
           </YearTooltip>
         )}
