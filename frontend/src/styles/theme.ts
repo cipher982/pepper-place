@@ -21,6 +21,24 @@ const theme = {
       shadow: "rgba(0, 0, 0, 0.05)", // Shadow color
       overlay: "rgba(0, 0, 0, 0.7)", // Overlay background color
     },
+    feedback: {
+      error: {
+        background: "#ffebee", // Light red background for error states
+        text: "#c62828",       // Dark red text for error messages
+      },
+      success: {
+        background: "#e8f5e9", // Light green background for success states
+        text: "#2e7d32",       // Dark green text for success messages
+      },
+      warning: {
+        background: "#fff8e1", // Light yellow background for warning states
+        text: "#f57f17",       // Dark yellow/orange text for warning messages
+      },
+      info: {
+        background: "#e3f2fd", // Light blue background for info states
+        text: "#1565c0",       // Dark blue text for info messages
+      }
+    }
   },
   
   // Spacing scale (in pixels)

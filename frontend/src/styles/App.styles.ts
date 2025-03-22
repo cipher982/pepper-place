@@ -41,11 +41,11 @@ export const LoadingState = styled.div`
 `;
 
 export const ErrorState = styled.div`
-  background-color: #ffebee; /* Consider adding error colors to theme */
+  background-color: ${({ theme }) => theme.colors.feedback.error.background};
   padding: ${({ theme }) => theme.spacing.lg};
   border-radius: ${({ theme }) => theme.borderRadius.md};
   margin: ${({ theme }) => theme.spacing.lg} 0;
-  color: #c62828; /* Consider adding error text colors to theme */
+  color: ${({ theme }) => theme.colors.feedback.error.text};
 `;
 
 export const TimelineGalleryContainer = styled.div`

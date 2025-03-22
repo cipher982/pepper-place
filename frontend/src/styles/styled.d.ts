@@ -21,6 +21,24 @@ declare module 'styled-components' {
         shadow: string;
         overlay: string;
       };
+      feedback: {
+        error: {
+          background: string;
+          text: string;
+        };
+        success: {
+          background: string;
+          text: string;
+        };
+        warning: {
+          background: string;
+          text: string;
+        };
+        info: {
+          background: string;
+          text: string;
+        };
+      };
     };
     
     spacing: {
