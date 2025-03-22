@@ -16,12 +16,6 @@ export default function usePhotoNavigation({
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   // Reference to track navigation direction
   const lastDirection = useRef<"forward" | "backward" | null>(null);
-  // Timestamp of last arrow key navigation
-  const lastArrowTime = useRef<number>(0);
-  // Navigation lock to prevent rapid changes
-  const isNavigationLocked = useRef<boolean>(false);
-  // Lock timeout reference
-  const navigationLockTimer = useRef<any>(null);
 
   // Sort photos by year and month when the photos array changes
   useEffect(() => {
@@ -44,80 +38,40 @@ export default function usePhotoNavigation({
   // Get current photo
   const currentPhoto = sortedPhotos.current[currentIndex];
 
-  // Function to lock navigation for a period of time
-  const lockNavigation = useCallback((durationMs: number = 250) => {
-    // Clear any existing lock
-    if (navigationLockTimer.current) {
-      clearTimeout(navigationLockTimer.current);
-    }
-    
-    // Set the lock
-    isNavigationLocked.current = true;
-    
-    // Schedule unlock
-    navigationLockTimer.current = setTimeout(() => {
-      isNavigationLocked.current = false;
-      navigationLockTimer.current = null;
-    }, durationMs);
-  }, []);
-
-  // Navigate to next photo with strong debouncing
+  // Navigate to next photo - simplified
   const nextPhoto = useCallback(() => {
     if (sortedPhotos.current.length === 0) return;
     
-    // Skip if navigation is locked
-    if (isNavigationLocked.current) return;
-    
-    // Record time for debugging/coordination
-    lastArrowTime.current = Date.now();
-    
     // Set direction and update index
     lastDirection.current = "forward";
-    
-    // Lock navigation to prevent rapid changes
-    lockNavigation(250);
     
     // Update the index
     setCurrentIndex(prevIndex => {
       return prevIndex + 1 >= sortedPhotos.current.length ? 0 : prevIndex + 1;
     });
-  }, [lockNavigation]);
+  }, []);
 
-  // Navigate to previous photo with strong debouncing
+  // Navigate to previous photo - simplified
   const prevPhoto = useCallback(() => {
     if (sortedPhotos.current.length === 0) return;
     
-    // Skip if navigation is locked
-    if (isNavigationLocked.current) return;
-    
-    // Record time for debugging/coordination
-    lastArrowTime.current = Date.now();
-    
     // Set direction
     lastDirection.current = "backward";
-    
-    // Lock navigation to prevent rapid changes
-    lockNavigation(250);
     
     // Update the index
     setCurrentIndex(prevIndex => {
       return prevIndex - 1 < 0 ? sortedPhotos.current.length - 1 : prevIndex - 1;
     });
-  }, [lockNavigation]);
+  }, []);
 
-  // Jump to specific year with protection against rapid changes
+  // Jump to specific year - simplified to focus on finding the right photo
   const jumpToYear = useCallback((yearValue: number) => {
     if (sortedPhotos.current.length === 0) return;
-    
-    // Skip if navigation is locked from arrow keys
-    if (isNavigationLocked.current) return;
     
     // For integer year values, find the first photo of that year
     if (Number.isInteger(yearValue)) {
       const yearIndex = sortedPhotos.current.findIndex(photo => photo.year === yearValue);
-      if (yearIndex >= 0 && yearIndex !== currentIndex) {
-        // Lock navigation to prevent conflicts
-        lockNavigation(250);
+      if (yearIndex >= 0) {
         setCurrentIndex(yearIndex);
         return;
       }
@@ -145,20 +99,9 @@ export default function usePhotoNavigation({
       }
     });
     
-    if (bestMatchIndex >= 0 && bestMatchIndex !== currentIndex) {
-      // Lock navigation to prevent conflicts
-      lockNavigation(250);
+    if (bestMatchIndex >= 0) {
       setCurrentIndex(bestMatchIndex);
     }
-  }, [currentIndex, lockNavigation]);
-
-  // Clean up lock timer on unmount
-  useEffect(() => {
-    return () => {
-      if (navigationLockTimer.current) {
-        clearTimeout(navigationLockTimer.current);
-      }
-    };
   }, []);
 
   // Get information about current position
@@ -174,7 +117,7 @@ export default function usePhotoNavigation({
     };
   }, [currentIndex]);
 
-  // Set up keyboard event listeners for arrow keys with debouncing
+  // Set up keyboard event listeners for arrow keys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") {

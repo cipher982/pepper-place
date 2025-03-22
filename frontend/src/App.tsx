@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import styled from "styled-components";
 import Timeline from "./components/Timeline";
 import PhotoGallery from "./components/PhotoGallery";
@@ -81,12 +81,7 @@ function App() {
   // Current year is derived from the current photo in the navigation
   const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
   
-  // Debounced year setting for photo changes
-  // This prevents rapid toggling between values
-  const pendingYearUpdate = useRef<NodeJS.Timeout | null>(null);
-  const lastHandledPhoto = useRef<string | null>(null);
-  
-  // Update current year when current photo changes
+  // Update current year when current photo changes - simplified
   useEffect(() => {
     // Skip if photo isn't loaded yet
     if (!currentPhoto) {
@@ -99,40 +94,16 @@ function App() {
       return;
     }
     
-    // Avoid handling same photo twice
-    if (lastHandledPhoto.current === currentPhoto.id) return;
-    lastHandledPhoto.current = currentPhoto.id;
-    
-    // Clear any pending updates 
-    if (pendingYearUpdate.current) {
-      clearTimeout(pendingYearUpdate.current);
+    // Simply update the year if it's different
+    if (currentYear !== currentPhoto.year) {
+      setCurrentYear(currentPhoto.year);
     }
-    
-    // Set a longer delay before updating the year (300ms)
-    // This prevents flickering and rapid changes during keyboard navigation
-    pendingYearUpdate.current = setTimeout(() => {
-      // Only set if actually different to prevent unnecessary renders
-      if (currentYear !== currentPhoto.year) {
-        setCurrentYear(currentPhoto.year);
-      }
-      pendingYearUpdate.current = null;
-    }, 300);
-    
-    // Cleanup on unmount
-    return () => {
-      if (pendingYearUpdate.current) {
-        clearTimeout(pendingYearUpdate.current);
-      }
-    };
   }, [currentPhoto, timeline, currentYear]);
   
-  // Handle year change from Timeline component
+  // Handle year change from Timeline component - direct and simple
   const handleYearChange = (year: number) => {
-    // Directly jump to the year without changing state first
     jumpToYear(year);
-    
-    // The currentPhoto effect will handle updating currentYear
-    // after the jump completes
+    // After jumping, the current photo will change, which will update currentYear through the effect above
   };
 
   // Get position information
@@ -162,7 +133,12 @@ function App() {
           <PhotoGallery 
             photos={photos}
             initialYear={currentYear}
-            onYearChange={setCurrentYear}
+            onYearChange={(year) => {
+              // Only update if needed to avoid circular updates
+              if (year !== currentYear) {
+                setCurrentYear(year);
+              }
+            }}
           />
         </TimelineGalleryContainer>
       )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import ReactSlider from "react-slider";
 import styled from "styled-components";
 import { TimelinePeriod } from "../types";
@@ -107,7 +107,6 @@ const TimelineSlider: React.FC<{
 }> = ({ min, max, step, value, onChange, onSliderChange, displayYear, years }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState(0);
-  const [tooltipValue, setTooltipValue] = useState(displayYear);
   
   const handleChange = (newValue: number | readonly number[]) => {
     onChange(newValue as number);
@@ -155,7 +154,7 @@ const TimelineSlider: React.FC<{
       />
       {showTooltip && (
         <YearTooltip style={{ left: `${tooltipPosition}px` }}>
-          {tooltipValue}
+          {displayYear}
         </YearTooltip>
       )}
     </div>
@@ -174,29 +173,9 @@ const Timeline: React.FC<TimelineProps> = ({
   const minYear = Math.min(...years);
   const maxYear = Math.max(...years);
   
-  // Keep track of the continuous year value (floating point)
-  const [continuousYear, setContinuousYear] = useState<number>(currentYear);
-  const [displayedYear, setDisplayedYear] = useState<string>(`${currentYear}`);
-  
-  // Track the last time a user interacted with the slider
-  const lastInteractionTime = useRef<number>(0);
-  const lastYearFromProps = useRef<number>(currentYear);
-  
-  // Update continuousYear when currentYear changes from external sources
-  useEffect(() => {
-    // Skip if no change in year
-    if (currentYear === lastYearFromProps.current) return;
-    
-    // Only update the slider if it's been >500ms since user interaction
-    // This prevents fighting between keyboard navigation and slider
-    const now = Date.now();
-    if (now - lastInteractionTime.current > 500) {
-      setContinuousYear(currentYear);
-      setDisplayedYear(formatYearValue(currentYear));
-    }
-    
-    lastYearFromProps.current = currentYear;
-  }, [currentYear]);
+  // Only keep internal dragging state during active interactions
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState<number>(currentYear);
   
   // Function to convert from slider value to display format
   const formatYearValue = (value: number): string => {
@@ -215,29 +194,27 @@ const Timeline: React.FC<TimelineProps> = ({
     return `${year} ${monthNames[safeMonth - 1]}`;
   };
   
-  // Handle slider drag/change
+  // Handle slider drag/change - only updates internal state
   const handleSliderDrag = (value: number) => {
-    // Record that user is interacting with the slider
-    lastInteractionTime.current = Date.now();
-    setContinuousYear(value);
-    setDisplayedYear(formatYearValue(value));
+    setIsDragging(true);
+    setDragValue(value);
   };
   
   // Final change handler (when user releases slider)
   const handleSliderChange = (value: number) => {
-    // Record that user just interacted with the slider
-    lastInteractionTime.current = Date.now();
-    // Pass the exact value for precise navigation
+    // When user is done dragging, notify parent and reset internal state
+    setIsDragging(false);
     onYearChange(value);
   };
 
   // Handle click on year marker
   const handleYearClick = (year: number) => {
-    // Record that user just interacted with the slider
-    lastInteractionTime.current = Date.now();
-    setContinuousYear(year);
     onYearChange(year);
   };
+
+  // The actual value to display in the slider
+  const displayValue = isDragging ? dragValue : currentYear;
+  const displayYearText = formatYearValue(displayValue);
 
   // Generate tick marks for each year
   const renderTicks = () => {
@@ -252,49 +229,50 @@ const Timeline: React.FC<TimelineProps> = ({
       );
     });
   };
-
-  // Year labels (show every other year if there are many)
-  const displayYears = years.length > 10 
-    ? years.filter((_, index) => index % 2 === 0)
-    : years;
+  
+  // Generate year markers (labels)
+  const renderYearMarkers = () => {
+    // Only show selected important years to avoid crowding
+    // Logic: Show all years if ≤ 10, or show spaced markers
+    let markersToShow = years;
+    if (years.length > 10) {
+      // For many years, show first, last, and about 5-8 in between
+      const spacing = Math.max(1, Math.ceil(years.length / 8));
+      markersToShow = years.filter((_, index) => index % spacing === 0 || index === years.length - 1);
+    }
+    
+    return markersToShow.map(year => {
+      const position = ((year - minYear) / (maxYear - minYear)) * 100;
+      const isActive = Math.floor(displayValue) === year;
+      
+      return (
+        <YearMarker 
+          key={year}
+          style={{ left: `${position}%` }}
+          $active={isActive}
+          onClick={() => handleYearClick(year)}
+        >
+          {year}
+        </YearMarker>
+      );
+    });
+  };
 
   return (
-    <div style={{ 
-      padding: "0 20px", 
-      position: "relative", 
-      height: "100px",
-      marginBottom: "20px"
-    }}>
+    <div style={{ padding: "20px 30px 50px", position: "relative" }}>
       <TimelineSlider
         min={minYear}
         max={maxYear}
-        step={0.01}
-        value={continuousYear}
+        step={1/12} // Step by months
+        value={displayValue}
         onChange={handleSliderDrag}
         onSliderChange={handleSliderChange}
-        displayYear={displayedYear}
+        displayYear={displayYearText}
         years={years}
       />
-      
-      <div style={{ position: "relative", height: "30px" }}>
+      <div style={{ position: "relative", marginTop: "10px", height: "30px" }}>
         {renderTicks()}
-        
-        {/* Year markers below the timeline */}
-        {displayYears.map(year => {
-          // Calculate position as percentage
-          const position = ((year - minYear) / (maxYear - minYear)) * 100;
-          
-          return (
-            <YearMarker 
-              key={year}
-              style={{ left: `${position}%` }}
-              $active={Math.floor(continuousYear) === year}
-              onClick={() => handleYearClick(year)}
-            >
-              {year}
-            </YearMarker>
-          );
-        })}
+        {renderYearMarkers()}
       </div>
     </div>
   );

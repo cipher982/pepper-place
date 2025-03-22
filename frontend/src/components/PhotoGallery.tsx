@@ -346,13 +346,19 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({
   // Notify parent component when current year changes
   useEffect(() => {
     if (currentPhoto && onYearChange) {
-      onYearChange(currentPhoto.year);
+      // Only call onYearChange if the year has actually changed from the initial year
+      // This helps prevent circular updates
+      if (!initialYear || currentPhoto.year !== initialYear) {
+        onYearChange(currentPhoto.year);
+      }
     }
-  }, [currentPhoto, onYearChange]);
+  }, [currentPhoto, onYearChange, initialYear]);
 
   // Handle internal gallery navigation to sync with our global index
   const handleSlideChange = (newIndex: number) => {
-    setCurrentIndex(newIndex);
+    if (newIndex !== currentIndex) {
+      setCurrentIndex(newIndex);
+    }
   };
 
   if (photos.length === 0) {
@@ -409,6 +415,9 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({
         useBrowserFullscreen={false}
         startIndex={currentIndex}
         onSlide={handleSlideChange}
+        isRTL={false}
+        disableKeyDown={true} // Disable the built-in keyboard navigation
+        disableSwipe={false}
         renderItem={(item: any) => {
           // If the item has a custom renderItem function, use it (for videos)
           if (item.renderItem && typeof item.renderItem === 'function') {
