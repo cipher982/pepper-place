@@ -3,9 +3,9 @@ import { extractDateFromPath } from "../utils/media";
 
 // Single object for cache constants
 const CACHE = {
-  KEYS: {
-    MANIFEST: "pepper_photos_manifest",
-    TIMESTAMP: "pepper_photos_manifest_timestamp"
+  KEY_PREFIX: {
+    MANIFEST: "photos_manifest_",
+    TIMESTAMP: "photos_manifest_timestamp_"
   },
   // Cache duration in milliseconds (24 hours)
   DURATION: 24 * 60 * 60 * 1000
@@ -22,9 +22,15 @@ class PhotoService {
   private bucket: string;
   private baseUrl: string;
   private manifestCache: Manifest | null = null;
+  private manifestCacheKey: string;
+  private timestampCacheKey: string;
 
   constructor(config: MinioConfig) {
     this.bucket = config.bucket;
+    
+    // Create bucket-specific cache keys
+    this.manifestCacheKey = `${CACHE.KEY_PREFIX.MANIFEST}${this.bucket}`;
+    this.timestampCacheKey = `${CACHE.KEY_PREFIX.TIMESTAMP}${this.bucket}`;
     
     // Ensure endpoint has protocol
     let endpoint = config.endpoint;
@@ -41,8 +47,8 @@ class PhotoService {
   // Try to load manifest from local storage - simplified
   private loadManifestFromCache(): Manifest | null {
     try {
-      const cachedTimestamp = localStorage.getItem(CACHE.KEYS.TIMESTAMP);
-      const cachedManifest = localStorage.getItem(CACHE.KEYS.MANIFEST);
+      const cachedTimestamp = localStorage.getItem(this.timestampCacheKey);
+      const cachedManifest = localStorage.getItem(this.manifestCacheKey);
       
       if (!cachedTimestamp || !cachedManifest) {
         return null;
@@ -54,8 +60,8 @@ class PhotoService {
       
       if (now - timestamp > CACHE.DURATION) {
         // Cache expired, clear it
-        localStorage.removeItem(CACHE.KEYS.MANIFEST);
-        localStorage.removeItem(CACHE.KEYS.TIMESTAMP);
+        localStorage.removeItem(this.manifestCacheKey);
+        localStorage.removeItem(this.timestampCacheKey);
         return null;
       }
       
@@ -76,8 +82,8 @@ class PhotoService {
   // Save manifest to local storage - simplified
   private saveManifestToCache(manifest: Manifest): void {
     try {
-      localStorage.setItem(CACHE.KEYS.MANIFEST, JSON.stringify(manifest));
-      localStorage.setItem(CACHE.KEYS.TIMESTAMP, Date.now().toString());
+      localStorage.setItem(this.manifestCacheKey, JSON.stringify(manifest));
+      localStorage.setItem(this.timestampCacheKey, Date.now().toString());
     } catch (error) {
       console.error("Error saving manifest to cache:", error);
       // If we can't save to localStorage (e.g., it's full), just proceed without caching
@@ -147,6 +153,14 @@ class PhotoService {
 
     // Fetch fresh manifest if not in cache
     return this.fetchManifest();
+  }
+
+  // Clear all manifest cache for this bucket
+  clearCache(): void {
+    localStorage.removeItem(this.manifestCacheKey);
+    localStorage.removeItem(this.timestampCacheKey);
+    this.manifestCache = null;
+    console.log(`Cache cleared for bucket: ${this.bucket}`);
   }
 
   async listPhotos(): Promise<Photo[]> {

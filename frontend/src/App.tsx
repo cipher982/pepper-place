@@ -14,12 +14,17 @@ import {
 
 function App() {
   // Use config from environment variables
-  const minioConfig = useMemo(() => ({
-    endpoint: process.env.REACT_APP_S3_ENDPOINT || "http://localhost:9000",
-    bucket: process.env.REACT_APP_S3_BUCKET || "pepper-photos-simple",
-  }), []);
+  const minioConfig = useMemo(() => {
+    if (!process.env.REACT_APP_S3_ENDPOINT || !process.env.REACT_APP_S3_BUCKET) {
+      throw new Error("Missing required environment variables: REACT_APP_S3_ENDPOINT and REACT_APP_S3_BUCKET must be set");
+    }
+    return {
+      endpoint: process.env.REACT_APP_S3_ENDPOINT,
+      bucket: process.env.REACT_APP_S3_BUCKET,
+    };
+  }, []);
   
-  const { photos, timeline, loading, error } = usePhotoData(minioConfig);
+  const { photos, timeline, loading, error, refreshData } = usePhotoData(minioConfig);
   
   // Flag to track if year change is from timeline vs photo navigation
   const [isUserDraggingTimeline, setIsUserDraggingTimeline] = useState(false);

@@ -19,6 +19,9 @@ const usePhotoData = (config: MinioConfig = DEFAULT_CONFIG) => {
   // Service ref to avoid recreation
   const photoServiceRef = useRef<PhotoService | null>(null);
   
+  // Track the last bucket used for automatic refresh
+  const lastBucketRef = useRef<string>(config.bucket);
+  
   // Loading state
   const isLoadingData = useRef(false);
   
@@ -63,16 +66,41 @@ const usePhotoData = (config: MinioConfig = DEFAULT_CONFIG) => {
     }
   }, [config]);
   
+  // Function to force refresh by clearing cache and reloading
+  const refreshData = useCallback(async () => {
+    if (photoServiceRef.current) {
+      // Clear the cache
+      photoServiceRef.current.clearCache();
+      // Re-initialize the service with current config
+      photoServiceRef.current = new PhotoService(config);
+    } else {
+      // Create a new service if it doesn't exist
+      photoServiceRef.current = new PhotoService(config);
+    }
+    
+    // Load fresh data
+    await loadData();
+  }, [config, loadData]);
+  
   useEffect(() => {
-    // Only load data on initial mount or config changes
-    loadData();
+    // Check if bucket has changed
+    if (config.bucket !== lastBucketRef.current) {
+      console.log(`Bucket changed from ${lastBucketRef.current} to ${config.bucket}, refreshing data...`);
+      // Update the ref
+      lastBucketRef.current = config.bucket;
+      // Refresh data when bucket changes
+      refreshData();
+    } else {
+      // Normal load on initial mount or other config changes
+      loadData();
+    }
     
     // Cleanup function
     return () => {
       // Cancel any pending operations if component unmounts
       photoServiceRef.current = null;
     };
-  }, [loadData]);
+  }, [config, loadData, refreshData]);
   
   return {
     photos,
@@ -80,7 +108,8 @@ const usePhotoData = (config: MinioConfig = DEFAULT_CONFIG) => {
     loading,
     error,
     currentYear,
-    setCurrentYear
+    setCurrentYear,
+    refreshData
   };
 };
 
