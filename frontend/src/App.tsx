@@ -53,6 +53,13 @@ const ErrorState = styled.div`
   color: #c62828;
 `;
 
+const TimelineGalleryContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  position: relative;
+`;
+
 function App() {
   // Use useMemo to prevent config recreation on each render
   const minioConfig = useMemo(() => ({
@@ -74,7 +81,7 @@ function App() {
       ) : error ? (
         <ErrorState>{error}</ErrorState>
       ) : (
-        <>
+        <TimelineGalleryContainer>
           <Timeline 
             periods={timeline} 
             currentYear={currentYear}
@@ -85,7 +92,7 @@ function App() {
             photos={photos} 
             year={currentYear} 
           />
-        </>
+        </TimelineGalleryContainer>
       )}
       
       <Footer>

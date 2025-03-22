@@ -40,13 +40,17 @@ const StyledTrack = styled.div<{ $index: number }>`
   position: relative;
 `;
 
-const YearMarker = styled.div<{ active: boolean }>`
+const YearMarker = styled.div<{ $active: boolean }>`
   position: absolute;
   font-size: 12px;
-  color: ${props => props.active ? "#ff6b6b" : "#666"};
+  color: ${props => props.$active ? "#ff6b6b" : "#666"};
   bottom: -25px;
   transform: translateX(-50%);
-  font-weight: ${props => props.active ? "bold" : "normal"};
+  font-weight: ${props => props.$active ? "bold" : "normal"};
+  z-index: 1;
+  background-color: rgba(255, 255, 255, 0.7);
+  padding: 2px 5px;
+  border-radius: 3px;
 `;
 
 const StyledSlider = styled(ReactSlider)`
@@ -106,7 +110,12 @@ const Timeline: React.FC<TimelineProps> = ({ periods, currentYear, onYearChange 
   };
 
   return (
-    <div style={{ padding: "0 20px", position: "relative", height: "80px" }}>
+    <div style={{ 
+      padding: "0 20px", 
+      position: "relative", 
+      height: "100px",
+      marginBottom: "20px"
+    }}>
       <TimelineSlider
         min={0}
         max={years.length - 1}
@@ -124,7 +133,7 @@ const Timeline: React.FC<TimelineProps> = ({ periods, currentYear, onYearChange 
           <YearMarker 
             key={year}
             style={{ left: position }}
-            active={year === currentYear}
+            $active={year === currentYear}
           >
             {year}
           </YearMarker>
