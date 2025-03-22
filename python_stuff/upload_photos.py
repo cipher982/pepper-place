@@ -299,6 +299,90 @@ def get_content_type(file_path):
     return "application/octet-stream"
 
 
+def generate_manifest(minio_client):
+    """
+    Generate a manifest.json file containing metadata for all photos in the bucket.
+    The manifest includes:
+    - List of all photos with metadata (id, path, year, month, filename)
+    - Timeline data with photo counts by year
+    """
+    print("Generating manifest file...")
+    
+    try:
+        # List all objects in the media directory
+        photos = []
+        objects = minio_client.list_objects(BUCKET_NAME, prefix="media/", recursive=True)
+        
+        # Process each object
+        for obj in objects:
+            # Parse path components
+            path_parts = obj.object_name.split('/')
+            if len(path_parts) >= 4:  # media/YEAR/MONTH/FILENAME
+                try:
+                    year = int(path_parts[1])
+                    month = int(path_parts[2])
+                    filename = path_parts[3]
+                    
+                    # Create photo entry
+                    photo = {
+                        "id": obj.object_name,
+                        "path": obj.object_name,
+                        "year": year,
+                        "month": month,
+                        "filename": filename,
+                        "size": obj.size,
+                        "last_modified": obj.last_modified.isoformat() if hasattr(obj, 'last_modified') else None
+                    }
+                    
+                    photos.append(photo)
+                except (ValueError, IndexError) as e:
+                    print(f"Error parsing path {obj.object_name}: {e}")
+        
+        # Sort photos by year and month (newest first)
+        photos.sort(key=lambda p: (p["year"], p["month"]), reverse=True)
+        
+        # Generate timeline data (photo counts by year)
+        year_counts = {}
+        for photo in photos:
+            year = photo["year"]
+            year_counts[year] = year_counts.get(year, 0) + 1
+        
+        timeline = [{"year": year, "count": count} for year, count in year_counts.items()]
+        timeline.sort(key=lambda x: x["year"])
+        
+        # Create the manifest
+        manifest = {
+            "photos": photos,
+            "timeline": timeline,
+            "generated_at": datetime.now().isoformat(),
+            "total_photos": len(photos)
+        }
+        
+        # Save manifest to a temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+            json.dump(manifest, temp_file, indent=2)
+            temp_file_path = temp_file.name
+        
+        # Upload manifest to Minio
+        print(f"Uploading manifest with metadata for {len(photos)} photos...")
+        minio_client.fput_object(
+            BUCKET_NAME,
+            "manifest.json",
+            temp_file_path,
+            content_type="application/json"
+        )
+        
+        # Clean up temporary file
+        os.unlink(temp_file_path)
+        
+        print(f"✓ Manifest uploaded successfully")
+        return True
+    
+    except Exception as e:
+        print(f"Error generating manifest: {e}")
+        return False
+
+
 def upload_photos(photos_dir: str):
     """Upload photos and videos to MinIO with year/month structure"""
     print(f"Uploading media from {photos_dir} to MinIO")
@@ -434,15 +518,24 @@ def upload_photos(photos_dir: str):
     main_progress.close()
     print(f"Uploaded {processed_count} of {total_files} media files to MinIO")
     print(f"Total data transferred: {processed_size / (1024*1024):.2f} MB")
+    
+    # Generate and upload the manifest file
+    generate_manifest(minio_client)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Upload photos to MinIO with organization')
     parser.add_argument('--dir', type=str, default=PHOTOS_DIR, help='Directory containing photos')
     parser.add_argument('--skip-video-thumbnails', action='store_true', help='Skip video thumbnail creation')
+    parser.add_argument('--manifest-only', action='store_true', help='Only generate manifest without uploading photos')
     args = parser.parse_args()
     
     # Set global options from command line
     SKIP_VIDEO_THUMBNAILS = args.skip_video_thumbnails
     
-    # Run the upload
-    upload_photos(args.dir)
+    # Run the upload or just generate manifest
+    if args.manifest_only:
+        minio_client = setup_minio_client()
+        ensure_bucket_exists(minio_client)
+        generate_manifest(minio_client)
+    else:
+        upload_photos(args.dir)
