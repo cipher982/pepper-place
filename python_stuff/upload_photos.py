@@ -3,18 +3,23 @@ from datetime import datetime
 from minio import Minio
 from minio.error import S3Error
 from PIL import Image
-from PIL.ExifTags import TAGS
 import io
 import hashlib
 from dotenv import load_dotenv
 from tqdm import tqdm
-import subprocess
 import tempfile
 import mimetypes
 import json
-import re
-import threading
 import argparse
+from typing import Tuple
+
+from utils import get_exif_date
+from utils import convert_heic_to_jpeg
+from utils import get_content_type
+from utils import create_video_thumbnail
+from utils import validate_video_file
+from utils import validate_image_file
+from utils import get_video_metadata
 
 # Load environment variables
 load_dotenv("../.env")
@@ -23,10 +28,10 @@ load_dotenv("../.env")
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
-BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME")
+BUCKET_NAME = "pepper-photos"
 
 # File paths
-PHOTOS_DIR = "../dog_images_simple"
+PHOTOS_DIR = "../dog_images"
 
 # Supported file extensions
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".heic", ".heif")
@@ -39,105 +44,9 @@ WEB_IMAGE_FORMAT = "JPEG"  # Target format for web images
 WEB_IMAGE_QUALITY = 85  # Quality for web images
 SKIP_VIDEO_THUMBNAILS = False  # Skip video thumbnail creation
 
-
-def get_exif_date(file_path):
-    """Extract date from media metadata or use file modification date as fallback"""
-    file_lower = file_path.lower()
-    
-    # For videos, use ffprobe to extract creation date
-    if any(file_lower.endswith(ext) for ext in VIDEO_EXTENSIONS):
-        try:
-            # Try using ffprobe to get creation date
-            cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", 
-                   "-show_entries", "format_tags=creation_time:format=filename,duration", 
-                   file_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            
-            if result.returncode == 0:
-                metadata = json.loads(result.stdout)
-                # Try to find creation_time in tags
-                if "format" in metadata and "tags" in metadata["format"] and "creation_time" in metadata["format"]["tags"]:
-                    creation_time = metadata["format"]["tags"]["creation_time"]
-                    # Parse ISO format date like "2023-04-15T12:30:45.000000Z"
-                    date_obj = datetime.fromisoformat(creation_time.replace("Z", "+00:00"))
-                    return date_obj.year, date_obj.month
-            
-            # Fallback to exiftool for video metadata
-            return extract_date_with_exiftool(file_path)
-        except Exception as e:
-            print(f"Error extracting video metadata from {file_path}: {e}")
-    
-    # For HEIC/HEIF files, use exiftool
-    elif file_lower.endswith((".heic", ".heif")):
-        try:
-            return extract_date_with_exiftool(file_path)
-        except Exception as e:
-            print(f"Error extracting HEIC metadata from {file_path}: {e}")
-    
-    # For regular images, try EXIF data with PIL
-    else:
-        try:
-            image = Image.open(file_path)
-            exif_data = image._getexif()
-
-            if exif_data:
-                # Try to get the date the picture was taken
-                for tag_id, value in exif_data.items():
-                    tag = TAGS.get(tag_id, tag_id)
-                    if tag == "DateTimeOriginal":
-                        # Parse EXIF date format: "YYYY:MM:DD HH:MM:SS"
-                        date_obj = datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
-                        return date_obj.year, date_obj.month
-        except Exception as e:
-            print(f"Error reading EXIF from {file_path}: {e}")
-
-    # Ultimate fallback: use file modification date
-    mod_time = os.path.getmtime(file_path)
-    date_obj = datetime.fromtimestamp(mod_time)
-    return date_obj.year, date_obj.month
-
-
-def extract_date_with_exiftool(file_path):
-    """Extract creation date using exiftool as a fallback method"""
-    try:
-        # Common date tags to try in order of preference
-        date_tags = [
-            "DateTimeOriginal", 
-            "CreateDate", 
-            "MediaCreateDate", 
-            "TrackCreateDate",
-            "CreationDate"
-        ]
-        
-        # Build exiftool command to extract these tags
-        tag_args = []
-        for tag in date_tags:
-            tag_args.extend(["-" + tag])
-            
-        cmd = ["exiftool", "-j", *tag_args, file_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        
-        if result.returncode == 0:
-            metadata = json.loads(result.stdout)
-            if metadata and isinstance(metadata, list) and len(metadata) > 0:
-                # Try each date tag in order of preference
-                for tag in date_tags:
-                    if tag in metadata[0]:
-                        date_str = metadata[0][tag]
-                        # Handle various date formats
-                        if ":" in date_str:
-                            # Format: "YYYY:MM:DD HH:MM:SS"
-                            match = re.search(r"(\d{4}):(\d{2}):\d{2}", date_str)
-                            if match:
-                                year, month = int(match.group(1)), int(match.group(2))
-                                return year, month
-    except Exception as e:
-        print(f"Error extracting date with exiftool: {e}")
-        
-    # If exiftool fails, use file modification time
-    mod_time = os.path.getmtime(file_path)
-    date_obj = datetime.fromtimestamp(mod_time)
-    return date_obj.year, date_obj.month
+# Maximum file size and duration limits
+MAX_VIDEO_SIZE_MB = 10  # Maximum video size in MB
+MAX_VIDEO_DURATION_SECONDS = 5  # Maximum video duration in seconds
 
 
 def setup_minio_client():
@@ -145,18 +54,18 @@ def setup_minio_client():
     # Remove http:// or https:// from endpoint if present
     endpoint = MINIO_ENDPOINT
     secure = False
-    
+
     if endpoint.startswith("https://"):
         endpoint = endpoint.replace("https://", "")
         secure = True
     elif endpoint.startswith("http://"):
         endpoint = endpoint.replace("http://", "")
-    
+
     return Minio(
         endpoint,
         access_key=MINIO_ACCESS_KEY,
         secret_key=MINIO_SECRET_KEY,
-        secure=secure
+        secure=secure,
     )
 
 
@@ -181,7 +90,7 @@ def create_thumbnail(file_path):
         return create_video_thumbnail(file_path)
     elif file_path.lower().endswith((".heic", ".heif")) and CONVERT_HEIC:
         # Convert HEIC to JPEG first, then create thumbnail
-        jpeg_buffer = convert_heic_to_jpeg(file_path)
+        jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
         if jpeg_buffer:
             try:
                 image = Image.open(jpeg_buffer)
@@ -204,96 +113,14 @@ def create_thumbnail(file_path):
                 # Handle transparent PNGs
                 image.save(thumbnail_buffer, format="PNG")
             else:
-                image.save(thumbnail_buffer, format=WEB_IMAGE_FORMAT, quality=WEB_IMAGE_QUALITY)
+                image.save(
+                    thumbnail_buffer, format=WEB_IMAGE_FORMAT, quality=WEB_IMAGE_QUALITY
+                )
             thumbnail_buffer.seek(0)
             return thumbnail_buffer
         except Exception as e:
             print(f"Error creating thumbnail for {file_path}: {e}")
             return None
-
-
-def convert_heic_to_jpeg(heic_path):
-    """Convert HEIC to JPEG format using sips (macOS) or PIL with pillow-heif"""
-    try:
-        # Using macOS sips command (more reliable than Python libraries)
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_jpg:
-            subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", str(WEB_IMAGE_QUALITY), 
-                          heic_path, "--out", temp_jpg.name], check=True, capture_output=True)
-            
-            # Read the converted file into a buffer
-            with open(temp_jpg.name, 'rb') as f:
-                jpeg_data = f.read()
-                buffer = io.BytesIO(jpeg_data)
-                buffer.seek(0)
-                return buffer
-    except subprocess.CalledProcessError as e:
-        print(f"Error converting HEIC using sips: {e}")
-        # Could add fallback to pillow-heif here if needed
-        return None
-    except Exception as e:
-        print(f"Error in HEIC conversion: {e}")
-        return None
-
-
-def create_video_thumbnail(video_path):
-    """Extract a thumbnail from a video file using ffmpeg"""
-    try:
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_jpg:            
-            # Set a timeout for ffmpeg process (10 seconds)
-            process = subprocess.run(
-                ["ffmpeg", "-y", "-i", video_path, "-ss", "00:00:01.000", 
-                 "-vframes", "1", "-vf", "scale=300:-1", temp_jpg.name],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10  # 10 second timeout
-            )
-            
-            if process.returncode != 0:
-                print(f"ffmpeg error: {process.stderr}")
-                return None
-            
-            # Check if thumbnail was created
-            if not os.path.exists(temp_jpg.name) or os.path.getsize(temp_jpg.name) == 0:
-                print("ffmpeg didn't create a valid thumbnail")
-                return None
-                
-            # Read the thumbnail into a buffer
-            with open(temp_jpg.name, 'rb') as f:
-                jpeg_data = f.read()
-                buffer = io.BytesIO(jpeg_data)
-                buffer.seek(0)
-                return buffer
-                
-    except subprocess.TimeoutExpired:
-        print(f"Timeout while creating video thumbnail - skipping")
-        return None
-    except subprocess.CalledProcessError as e:
-        print(f"Error extracting video thumbnail: {e}")
-        return None
-    except Exception as e:
-        print(f"Error in video thumbnail creation: {e}")
-        return None
-
-
-def get_content_type(file_path):
-    """Get the MIME type for a file"""
-    # Add additional mime types not correctly identified by mimetypes
-    if file_path.lower().endswith(".heic"):
-        return "image/heic"
-    
-    mime_type, _ = mimetypes.guess_type(file_path)
-    if mime_type:
-        return mime_type
-    
-    # Fallback based on extension
-    ext = os.path.splitext(file_path)[1].lower()
-    if ext in IMAGE_EXTENSIONS:
-        return f"image/{ext[1:]}"
-    elif ext in VIDEO_EXTENSIONS:
-        return f"video/{ext[1:]}"
-    
-    return "application/octet-stream"
 
 
 def generate_manifest(minio_client):
@@ -304,22 +131,24 @@ def generate_manifest(minio_client):
     - Timeline data with photo counts by year
     """
     print("Generating manifest file...")
-    
+
     try:
         # List all objects in the media directory
         photos = []
-        objects = minio_client.list_objects(BUCKET_NAME, prefix="media/", recursive=True)
-        
+        objects = minio_client.list_objects(
+            BUCKET_NAME, prefix="media/", recursive=True
+        )
+
         # Process each object
         for obj in objects:
             # Parse path components
-            path_parts = obj.object_name.split('/')
+            path_parts = obj.object_name.split("/")
             if len(path_parts) >= 4:  # media/YEAR/MONTH/FILENAME
                 try:
                     year = int(path_parts[1])
                     month = int(path_parts[2])
                     filename = path_parts[3]
-                    
+
                     # Create photo entry
                     photo = {
                         "id": obj.object_name,
@@ -328,63 +157,75 @@ def generate_manifest(minio_client):
                         "month": month,
                         "filename": filename,
                         "size": obj.size,
-                        "last_modified": obj.last_modified.isoformat() if hasattr(obj, 'last_modified') else None
+                        "last_modified": obj.last_modified.isoformat()
+                        if hasattr(obj, "last_modified")
+                        else None,
                     }
-                    
+
                     photos.append(photo)
                 except (ValueError, IndexError) as e:
                     print(f"Error parsing path {obj.object_name}: {e}")
-        
+
         # Sort photos by year and month (newest first)
         photos.sort(key=lambda p: (p["year"], p["month"]), reverse=True)
-        
+
         # Generate timeline data (photo counts by year)
         year_counts = {}
         for photo in photos:
             year = photo["year"]
             year_counts[year] = year_counts.get(year, 0) + 1
-        
-        timeline = [{"year": year, "count": count} for year, count in year_counts.items()]
+
+        timeline = [
+            {"year": year, "count": count} for year, count in year_counts.items()
+        ]
         timeline.sort(key=lambda x: x["year"])
-        
+
         # Create the manifest
         manifest = {
             "photos": photos,
             "timeline": timeline,
             "generated_at": datetime.now().isoformat(),
-            "total_photos": len(photos)
+            "total_photos": len(photos),
         }
-        
+
         # Save manifest to a temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as temp_file:
             json.dump(manifest, temp_file, indent=2)
             temp_file_path = temp_file.name
-        
+
         # Upload manifest to Minio
         print(f"Uploading manifest with metadata for {len(photos)} photos...")
         minio_client.fput_object(
             BUCKET_NAME,
             "manifest.json",
             temp_file_path,
-            content_type="application/json"
+            content_type="application/json",
         )
-        
+
         # Clean up temporary file
         os.unlink(temp_file_path)
-        
+
         print(f"✓ Manifest uploaded successfully")
         return True
-    
+
     except Exception as e:
         print(f"Error generating manifest: {e}")
         return False
 
 
-def upload_photos(photos_dir: str):
+def upload_photos(photos_dir: str, dry_run=False):
     """Upload photos and videos to MinIO with year/month structure"""
-    print(f"Uploading media from {photos_dir} to MinIO")
-    minio_client = setup_minio_client()
-    ensure_bucket_exists(minio_client)
+    if dry_run:
+        print(f"DRY RUN: Testing media processing from {photos_dir} (no uploads will occur)")
+    else:
+        print(f"Uploading media from {photos_dir} to MinIO")
+        
+    minio_client = None
+    if not dry_run:
+        minio_client = setup_minio_client()
+        ensure_bucket_exists(minio_client)
 
     # Initialize mimetypes
     mimetypes.init()
@@ -394,11 +235,12 @@ def upload_photos(photos_dir: str):
     for root, _, files in os.walk(photos_dir):
         for file in files:
             file_lower = file.lower()
-            if ((any(file_lower.endswith(ext) for ext in IMAGE_EXTENSIONS) or 
-                any(file_lower.endswith(ext) for ext in VIDEO_EXTENSIONS)) and 
-                not any(file_lower.endswith(skip) for skip in SKIP_FILES)):
+            if (
+                any(file_lower.endswith(ext) for ext in IMAGE_EXTENSIONS)
+                or any(file_lower.endswith(ext) for ext in VIDEO_EXTENSIONS)
+            ) and not any(file_lower.endswith(skip) for skip in SKIP_FILES):
                 eligible_files.append(os.path.join(root, file))
-    
+
     total_files = len(eligible_files)
     if total_files == 0:
         print("No media files found to upload")
@@ -406,54 +248,100 @@ def upload_photos(photos_dir: str):
 
     # Calculate total size for better progress tracking
     total_size = sum(os.path.getsize(f) for f in eligible_files)
-    
+
     # Process files with progress bar
-    print(f"Found {total_files} media files to process (Total: {total_size / (1024*1024):.2f} MB)")
+    print(
+        f"Found {total_files} media files to process (Total: {total_size / (1024*1024):.2f} MB)"
+    )
     processed_count = 0
     processed_size = 0
-    
+    error_files = []
+
     # Create progress bar for overall progress
-    main_progress = tqdm(total=total_size, desc="Overall progress", unit="B", unit_scale=True)
-    
+    main_progress = tqdm(
+        total=total_size, desc="Overall progress", unit="B", unit_scale=True
+    )
+
     for file_path in eligible_files:
         file_name = os.path.basename(file_path)
         file_lower = file_name.lower()
         file_size = os.path.getsize(file_path)
-        
+
         # Update progress description with current file
-        main_progress.set_description(f"Uploading {file_name} ({file_size / (1024*1024):.2f} MB)")
-        
+        action = "Testing" if dry_run else "Uploading"
+        main_progress.set_description(
+            f"{action} {file_name} ({file_size / (1024*1024):.2f} MB)"
+        )
+
         try:
             start_time = datetime.now()
-            
-            # Get date from file
-            year, month = get_exif_date(file_path)
+
+            # Get year and month from metadata
+            try:
+                year, month = get_exif_date(
+                    file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS
+                )
+            except Exception as e:
+                error_msg = f"Error getting date from {file_path}: {e}"
+                print(error_msg)
+                error_files.append((file_path, error_msg))
+                continue
 
             # Generate a unique filename based on content hash
             file_hash = hashlib.md5(open(file_path, "rb").read()).hexdigest()[:10]
-            
+
             # Process based on file type
             is_heic = any(file_lower.endswith(ext) for ext in (".heic", ".heif"))
             is_video = any(file_lower.endswith(ext) for ext in VIDEO_EXTENSIONS)
-            
+
+            # Validate video files before processing
+            if is_video:
+                is_valid, validation_msg = validate_video_file(file_path)
+                
+                # Check if video exceeds size or duration limits
+                if is_valid:
+                    duration, size_mb = get_video_metadata(file_path)
+                    if duration is not None and duration > MAX_VIDEO_DURATION_SECONDS:
+                        is_valid = False
+                        validation_msg = f"Video too long: {duration:.2f}s (max {MAX_VIDEO_DURATION_SECONDS}s)"
+                    
+                    if size_mb is not None and size_mb > MAX_VIDEO_SIZE_MB:
+                        is_valid = False
+                        validation_msg = f"Video too large: {size_mb:.2f}MB (max {MAX_VIDEO_SIZE_MB}MB)"
+                
+                if not is_valid:
+                    error_msg = f"Invalid video file: {validation_msg}"
+                    print(f"  - {file_name}: {error_msg}")
+                    error_files.append((file_path, error_msg))
+                    # Skip to next file if video is invalid
+                    if dry_run:
+                        main_progress.update(file_size)
+                        continue
+
             # MAIN MEDIA UPLOAD - Use a single "media" directory
             if is_heic and CONVERT_HEIC:
                 # For HEIC, convert to JPEG for web viewing
-                jpeg_buffer = convert_heic_to_jpeg(file_path)
+                jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
                 if jpeg_buffer:
                     media_key = f"media/{year}/{month:02d}/{file_hash}.jpg"
                     media_size = jpeg_buffer.getbuffer().nbytes
-                    minio_client.put_object(
-                        BUCKET_NAME,
-                        media_key,
-                        jpeg_buffer,
-                        media_size,
-                        content_type="image/jpeg"
-                    )
                     
+                    if not dry_run:
+                        minio_client.put_object(
+                            BUCKET_NAME,
+                            media_key,
+                            jpeg_buffer,
+                            media_size,
+                            content_type="image/jpeg",
+                        )
+
                     # Calculate and show upload statistics
                     elapsed = (datetime.now() - start_time).total_seconds()
                     speed = media_size / (1024 * 1024 * elapsed) if elapsed > 0 else 0
+                else:
+                    error_msg = f"Failed to convert HEIC file: {file_path}"
+                    print(error_msg)
+                    error_files.append((file_path, error_msg))
             else:
                 # For other files, upload directly
                 ext = os.path.splitext(file_name)[1].lower()
@@ -462,68 +350,143 @@ def upload_photos(photos_dir: str):
                 else:
                     # For regular images, keep extension but ensure lowercase
                     media_key = f"media/{year}/{month:02d}/{file_hash}{ext}"
-                
+
                 # Get content type
-                content_type = get_content_type(file_path)
-                
-                # Upload with progress tracking
-                minio_client.fput_object(
-                    BUCKET_NAME, 
-                    media_key, 
-                    file_path,
-                    content_type=content_type
+                content_type = get_content_type(
+                    file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS
                 )
-                
+
+                # Upload with progress tracking
+                if not dry_run:
+                    minio_client.fput_object(
+                        BUCKET_NAME, media_key, file_path, content_type=content_type
+                    )
+
                 # Calculate and show upload statistics
                 elapsed = (datetime.now() - start_time).total_seconds()
                 speed = file_size / (1024 * 1024 * elapsed) if elapsed > 0 else 0
 
             # Create and upload thumbnail (regardless of type)
             try:
-                thumb_buffer = create_thumbnail(file_path)
-                if thumb_buffer:
-                    thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.jpg"
-                    thumb_size = thumb_buffer.getbuffer().nbytes
-                    minio_client.put_object(
-                        BUCKET_NAME,
-                        thumbnail_key,
-                        thumb_buffer,
-                        thumb_size,
-                        content_type="image/jpeg"
-                    )
+                # Skip thumbnail creation if video validation failed
+                if is_video and 'validation_msg' in locals() and not is_valid:
+                    error_msg = f"Skipping thumbnail creation for invalid video: {validation_msg}"
+                    print(f"  - {file_name}: {error_msg}")
+                    error_files.append((file_path, error_msg))
+                # Validate images before thumbnail creation
+                elif not is_video and not is_heic:
+                    is_valid_img, img_msg = validate_image_file(file_path)
+                    if not is_valid_img:
+                        error_msg = f"Skipping thumbnail creation for invalid image: {img_msg}"
+                        print(f"  - {file_name}: {error_msg}")
+                        error_files.append((file_path, error_msg))
+                        # Skip to next file
+                        if dry_run:
+                            continue
                 else:
-                    print("Thumbnail creation failed - skipping")
+                    thumb_buffer = create_thumbnail(file_path)
+                    if thumb_buffer:
+                        thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.jpg"
+                        thumb_size = thumb_buffer.getbuffer().nbytes
+                        
+                        if not dry_run:
+                            minio_client.put_object(
+                                BUCKET_NAME,
+                                thumbnail_key,
+                                thumb_buffer,
+                                thumb_size,
+                                content_type="image/jpeg",
+                            )
+                    else:
+                        error_msg = f"Thumbnail creation failed - skipping"
+                        print(f"  - {file_name}: {error_msg}")
+                        error_files.append((file_path, error_msg))
             except Exception as e:
-                print(f"Error processing thumbnail: {e} - skipping")
+                error_msg = f"Error processing thumbnail: {e} - skipping"
+                print(f"  - {file_name}: {error_msg}")
+                error_files.append((file_path, error_msg))
 
             processed_count += 1
             processed_size += file_size
             main_progress.update(file_size)
-            
+
         except Exception as e:
-            print(f"\nError processing {file_name}: {e}")
-    
+            error_msg = f"Error processing {file_name}: {e}"
+            print(f"\n{error_msg}")
+            error_files.append((file_path, error_msg))
+
     main_progress.close()
-    print(f"Uploaded {processed_count} of {total_files} media files to MinIO")
-    print(f"Total data transferred: {processed_size / (1024*1024):.2f} MB")
     
-    # Generate and upload the manifest file
-    generate_manifest(minio_client)
+    if dry_run:
+        print(f"Dry run completed: Processed {processed_count} of {total_files} media files")
+        if error_files:
+            print(f"\nFound {len(error_files)} files with errors:")
+            for path, error in error_files:
+                print(f"  - {os.path.basename(path)}: {error}")
+        else:
+            print("No errors found. All files should upload successfully.")
+    else:
+        print(f"Uploaded {processed_count} of {total_files} media files to MinIO")
+        print(f"Total data transferred: {processed_size / (1024*1024):.2f} MB")
+
+        # Generate and upload the manifest file
+        generate_manifest(minio_client)
+
+
+def validate_image_file(file_path: str) -> Tuple[bool, str]:
+    """
+    Validate an image file to check if it can be processed correctly.
+    
+    Args:
+        file_path: Path to the image file
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    try:
+        img = Image.open(file_path)
+        width, height = img.size
+        
+        # Check for invalid dimensions
+        if width <= 0 or height <= 0:
+            return False, f"Invalid image dimensions: {width}x{height}"
+            
+        return True, f"Valid image: {width}x{height}"
+    except Exception as e:
+        return False, f"Error validating image: {e.__class__.__name__}: {e}"
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Upload photos to MinIO with organization')
-    parser.add_argument('--dir', type=str, default=PHOTOS_DIR, help='Directory containing photos')
-    parser.add_argument('--skip-video-thumbnails', action='store_true', help='Skip video thumbnail creation')
-    parser.add_argument('--manifest-only', action='store_true', help='Only generate manifest without uploading photos')
+    parser = argparse.ArgumentParser(
+        description="Upload photos to MinIO with organization"
+    )
+    parser.add_argument(
+        "--dir", type=str, default=PHOTOS_DIR, help="Directory containing photos"
+    )
+    parser.add_argument(
+        "--skip-video-thumbnails",
+        action="store_true",
+        help="Skip video thumbnail creation",
+    )
+    parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Only generate manifest without uploading photos",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Test processing without uploading (identify problem files)",
+    )
     args = parser.parse_args()
-    
+
     # Set global options from command line
     SKIP_VIDEO_THUMBNAILS = args.skip_video_thumbnails
-    
+
     # Run the upload or just generate manifest
     if args.manifest_only:
         minio_client = setup_minio_client()
         ensure_bucket_exists(minio_client)
         generate_manifest(minio_client)
     else:
-        upload_photos(args.dir)
+        upload_photos(args.dir, dry_run=args.dry_run)
