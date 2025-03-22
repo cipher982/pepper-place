@@ -238,10 +238,7 @@ def convert_heic_to_jpeg(heic_path):
 def create_video_thumbnail(video_path):
     """Extract a thumbnail from a video file using ffmpeg"""
     try:
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_jpg:
-            # Extract frame at 1 second mark, with timeout
-            print(f"Extracting thumbnail from video using ffmpeg...")
-            
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_jpg:            
             # Set a timeout for ffmpeg process (10 seconds)
             process = subprocess.run(
                 ["ffmpeg", "-y", "-i", video_path, "-ss", "00:00:01.000", 
@@ -442,12 +439,10 @@ def upload_photos(photos_dir: str):
             # MAIN MEDIA UPLOAD - Use a single "media" directory
             if is_heic and CONVERT_HEIC:
                 # For HEIC, convert to JPEG for web viewing
-                print(f"Converting HEIC to JPEG...")
                 jpeg_buffer = convert_heic_to_jpeg(file_path)
                 if jpeg_buffer:
                     media_key = f"media/{year}/{month:02d}/{file_hash}.jpg"
                     media_size = jpeg_buffer.getbuffer().nbytes
-                    print(f"Uploading web version ({media_size / (1024*1024):.2f} MB)")
                     minio_client.put_object(
                         BUCKET_NAME,
                         media_key,
@@ -459,7 +454,6 @@ def upload_photos(photos_dir: str):
                     # Calculate and show upload statistics
                     elapsed = (datetime.now() - start_time).total_seconds()
                     speed = media_size / (1024 * 1024 * elapsed) if elapsed > 0 else 0
-                    print(f"✓ Uploaded in {elapsed:.1f}s ({speed:.2f} MB/s)")
             else:
                 # For other files, upload directly
                 ext = os.path.splitext(file_name)[1].lower()
@@ -472,9 +466,6 @@ def upload_photos(photos_dir: str):
                 # Get content type
                 content_type = get_content_type(file_path)
                 
-                # Upload media file
-                print(f"Uploading file ({file_size / (1024*1024):.2f} MB)")
-                
                 # Upload with progress tracking
                 minio_client.fput_object(
                     BUCKET_NAME, 
@@ -486,16 +477,13 @@ def upload_photos(photos_dir: str):
                 # Calculate and show upload statistics
                 elapsed = (datetime.now() - start_time).total_seconds()
                 speed = file_size / (1024 * 1024 * elapsed) if elapsed > 0 else 0
-                print(f"✓ Uploaded in {elapsed:.1f}s ({speed:.2f} MB/s)")
 
             # Create and upload thumbnail (regardless of type)
-            print("Creating thumbnail...")
             try:
                 thumb_buffer = create_thumbnail(file_path)
                 if thumb_buffer:
                     thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.jpg"
                     thumb_size = thumb_buffer.getbuffer().nbytes
-                    print(f"Uploading thumbnail ({thumb_size / (1024*1024):.2f} MB)")
                     minio_client.put_object(
                         BUCKET_NAME,
                         thumbnail_key,
