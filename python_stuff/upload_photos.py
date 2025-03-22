@@ -11,7 +11,10 @@ import tempfile
 import mimetypes
 import json
 import argparse
-from typing import Tuple
+from typing import Tuple, List, Dict, Any
+import concurrent.futures
+from functools import partial
+import threading
 
 from utils import get_exif_date
 from utils import convert_heic_to_jpeg
@@ -48,6 +51,14 @@ SKIP_VIDEO_THUMBNAILS = False  # Skip video thumbnail creation
 MAX_VIDEO_SIZE_MB = 10  # Maximum video size in MB
 MAX_VIDEO_DURATION_SECONDS = 5  # Maximum video duration in seconds
 
+# Parallelization settings
+MAX_WORKERS_PROCESS = max(os.cpu_count() - 1, 1)  # Leave one CPU free
+MAX_WORKERS_THREAD = 10  # Concurrent uploads
+BATCH_SIZE = 10  # Process files in batches
+
+# Thread-local storage for MinIO clients
+local_minio_clients = threading.local()
+
 
 def setup_minio_client():
     """Setup and return MinIO client"""
@@ -67,6 +78,13 @@ def setup_minio_client():
         secret_key=MINIO_SECRET_KEY,
         secure=secure,
     )
+
+
+def get_minio_client():
+    """Get thread-local MinIO client"""
+    if not hasattr(local_minio_clients, "client"):
+        local_minio_clients.client = setup_minio_client()
+    return local_minio_clients.client
 
 
 def ensure_bucket_exists(minio_client):
@@ -121,6 +139,129 @@ def create_thumbnail(file_path):
         except Exception as e:
             print(f"Error creating thumbnail for {file_path}: {e}")
             return None
+
+
+def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
+    """Process a single media file completely (thumbnailing and uploading)"""
+    file_name = os.path.basename(file_path)
+    file_lower = file_name.lower()
+    file_size = os.path.getsize(file_path)
+    result = {
+        "file_path": file_path, 
+        "file_name": file_name,
+        "file_size": file_size,
+        "success": False,
+        "error": None
+    }
+
+    try:
+        # Get year and month from metadata
+        try:
+            year, month = get_exif_date(file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS)
+        except Exception as e:
+            result["error"] = f"Error getting date: {e}"
+            return result
+
+        # Generate a unique filename based on content hash
+        with open(file_path, "rb") as f:
+            file_hash = hashlib.md5(f.read()).hexdigest()[:10]
+
+        # Process based on file type
+        is_heic = any(file_lower.endswith(ext) for ext in (".heic", ".heif"))
+        is_video = any(file_lower.endswith(ext) for ext in VIDEO_EXTENSIONS)
+
+        # Validate video files before processing
+        if is_video:
+            is_valid, validation_msg = validate_video_file(file_path)
+            
+            # Check if video exceeds size or duration limits
+            if is_valid:
+                duration, size_mb = get_video_metadata(file_path)
+                if duration is not None and duration > MAX_VIDEO_DURATION_SECONDS:
+                    is_valid = False
+                    validation_msg = f"Video too long: {duration:.2f}s (max {MAX_VIDEO_DURATION_SECONDS}s)"
+                
+                if size_mb is not None and size_mb > MAX_VIDEO_SIZE_MB:
+                    is_valid = False
+                    validation_msg = f"Video too large: {size_mb:.2f}MB (max {MAX_VIDEO_SIZE_MB}MB)"
+            
+            if not is_valid:
+                result["error"] = f"Invalid video: {validation_msg}"
+                return result
+
+        # Get the thread-local MinIO client if needed
+        minio_client = None if dry_run else get_minio_client()
+
+        # MAIN MEDIA UPLOAD - Process based on file type
+        if is_heic and CONVERT_HEIC:
+            # For HEIC, convert to JPEG for web viewing
+            jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
+            if jpeg_buffer:
+                media_key = f"media/{year}/{month:02d}/{file_hash}.jpg"
+                media_size = jpeg_buffer.getbuffer().nbytes
+                
+                if not dry_run:
+                    minio_client.put_object(
+                        BUCKET_NAME,
+                        media_key,
+                        jpeg_buffer,
+                        media_size,
+                        content_type="image/jpeg",
+                    )
+            else:
+                result["error"] = "Failed to convert HEIC file"
+                return result
+        else:
+            # For other files, upload directly
+            ext = os.path.splitext(file_name)[1].lower()
+            media_key = f"media/{year}/{month:02d}/{file_hash}{ext}"
+
+            # Get content type
+            content_type = get_content_type(file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS)
+
+            # Upload file
+            if not dry_run:
+                minio_client.fput_object(
+                    BUCKET_NAME, media_key, file_path, content_type=content_type
+                )
+
+        # Create and upload thumbnail
+        # Skip thumbnail creation if video validation failed or image is invalid
+        if is_video and (not is_valid):
+            result["error"] = f"Skipping thumbnail for invalid video"
+            return result
+        
+        # Validate images before thumbnail creation
+        if not is_video and not is_heic:
+            is_valid_img, img_msg = validate_image_file(file_path)
+            if not is_valid_img:
+                result["error"] = f"Invalid image: {img_msg}"
+                return result
+
+        # Create thumbnail
+        thumb_buffer = create_thumbnail(file_path)
+        if thumb_buffer:
+            thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.jpg"
+            thumb_size = thumb_buffer.getbuffer().nbytes
+            
+            if not dry_run:
+                minio_client.put_object(
+                    BUCKET_NAME,
+                    thumbnail_key,
+                    thumb_buffer,
+                    thumb_size,
+                    content_type="image/jpeg",
+                )
+        else:
+            result["error"] = "Thumbnail creation failed"
+            return result
+
+        result["success"] = True
+        return result
+
+    except Exception as e:
+        result["error"] = f"Error: {e.__class__.__name__}: {e}"
+        return result
 
 
 def generate_manifest(minio_client):
@@ -216,14 +357,11 @@ def generate_manifest(minio_client):
 
 
 def upload_photos(photos_dir: str, dry_run=False):
-    """Upload photos and videos to MinIO with year/month structure"""
+    """Upload photos and videos to MinIO with year/month structure using parallel processing"""
     if dry_run:
         print(f"DRY RUN: Testing media processing from {photos_dir} (no uploads will occur)")
     else:
-        print(f"Uploading media from {photos_dir} to MinIO")
-        
-    minio_client = None
-    if not dry_run:
+        print(f"Uploading media from {photos_dir} to MinIO using {MAX_WORKERS_PROCESS} processes and {MAX_WORKERS_THREAD} threads")
         minio_client = setup_minio_client()
         ensure_bucket_exists(minio_client)
 
@@ -246,191 +384,66 @@ def upload_photos(photos_dir: str, dry_run=False):
         print("No media files found to upload")
         return
 
-    # Calculate total size for better progress tracking
+    # Calculate total size for progress tracking
     total_size = sum(os.path.getsize(f) for f in eligible_files)
-
-    # Process files with progress bar
-    print(
-        f"Found {total_files} media files to process (Total: {total_size / (1024*1024):.2f} MB)"
-    )
-    processed_count = 0
-    processed_size = 0
-    error_files = []
+    print(f"Found {total_files} media files to process (Total: {total_size / (1024*1024):.2f} MB)")
 
     # Create progress bar for overall progress
-    main_progress = tqdm(
-        total=total_size, desc="Overall progress", unit="B", unit_scale=True
-    )
-
-    for file_path in eligible_files:
-        file_name = os.path.basename(file_path)
-        file_lower = file_name.lower()
-        file_size = os.path.getsize(file_path)
-
-        # Update progress description with current file
-        action = "Testing" if dry_run else "Uploading"
-        main_progress.set_description(
-            f"{action} {file_name} ({file_size / (1024*1024):.2f} MB)"
-        )
-
-        try:
-            start_time = datetime.now()
-
-            # Get year and month from metadata
+    progress_bar = tqdm(total=total_size, desc="Overall progress", unit="B", unit_scale=True)
+    
+    # Process files in parallel
+    results = []
+    error_files = []
+    
+    # Create a partial function with dry_run parameter
+    process_file_with_dryrun = partial(process_file, dry_run=dry_run)
+    
+    # Use ProcessPoolExecutor for CPU-bound processing (thumbnails, image processing)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS_PROCESS) as executor:
+        # Process files in parallel
+        future_to_file = {executor.submit(process_file_with_dryrun, file_path): file_path for file_path in eligible_files}
+        
+        for future in concurrent.futures.as_completed(future_to_file):
+            file_path = future_to_file[future]
+            file_size = os.path.getsize(file_path)
+            
             try:
-                year, month = get_exif_date(
-                    file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS
-                )
-            except Exception as e:
-                error_msg = f"Error getting date from {file_path}: {e}"
-                print(error_msg)
-                error_files.append((file_path, error_msg))
-                continue
-
-            # Generate a unique filename based on content hash
-            file_hash = hashlib.md5(open(file_path, "rb").read()).hexdigest()[:10]
-
-            # Process based on file type
-            is_heic = any(file_lower.endswith(ext) for ext in (".heic", ".heif"))
-            is_video = any(file_lower.endswith(ext) for ext in VIDEO_EXTENSIONS)
-
-            # Validate video files before processing
-            if is_video:
-                is_valid, validation_msg = validate_video_file(file_path)
+                result = future.result()
+                results.append(result)
                 
-                # Check if video exceeds size or duration limits
-                if is_valid:
-                    duration, size_mb = get_video_metadata(file_path)
-                    if duration is not None and duration > MAX_VIDEO_DURATION_SECONDS:
-                        is_valid = False
-                        validation_msg = f"Video too long: {duration:.2f}s (max {MAX_VIDEO_DURATION_SECONDS}s)"
-                    
-                    if size_mb is not None and size_mb > MAX_VIDEO_SIZE_MB:
-                        is_valid = False
-                        validation_msg = f"Video too large: {size_mb:.2f}MB (max {MAX_VIDEO_SIZE_MB}MB)"
+                if result.get("error"):
+                    error_files.append((file_path, result["error"]))
                 
-                if not is_valid:
-                    error_msg = f"Invalid video file: {validation_msg}"
-                    print(f"  - {file_name}: {error_msg}")
-                    error_files.append((file_path, error_msg))
-                    # Skip to next file if video is invalid
-                    if dry_run:
-                        main_progress.update(file_size)
-                        continue
-
-            # MAIN MEDIA UPLOAD - Use a single "media" directory
-            if is_heic and CONVERT_HEIC:
-                # For HEIC, convert to JPEG for web viewing
-                jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
-                if jpeg_buffer:
-                    media_key = f"media/{year}/{month:02d}/{file_hash}.jpg"
-                    media_size = jpeg_buffer.getbuffer().nbytes
-                    
-                    if not dry_run:
-                        minio_client.put_object(
-                            BUCKET_NAME,
-                            media_key,
-                            jpeg_buffer,
-                            media_size,
-                            content_type="image/jpeg",
-                        )
-
-                    # Calculate and show upload statistics
-                    elapsed = (datetime.now() - start_time).total_seconds()
-                    speed = media_size / (1024 * 1024 * elapsed) if elapsed > 0 else 0
-                else:
-                    error_msg = f"Failed to convert HEIC file: {file_path}"
-                    print(error_msg)
-                    error_files.append((file_path, error_msg))
-            else:
-                # For other files, upload directly
-                ext = os.path.splitext(file_name)[1].lower()
-                if is_video:
-                    media_key = f"media/{year}/{month:02d}/{file_hash}{ext}"
-                else:
-                    # For regular images, keep extension but ensure lowercase
-                    media_key = f"media/{year}/{month:02d}/{file_hash}{ext}"
-
-                # Get content type
-                content_type = get_content_type(
-                    file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS
-                )
-
-                # Upload with progress tracking
-                if not dry_run:
-                    minio_client.fput_object(
-                        BUCKET_NAME, media_key, file_path, content_type=content_type
-                    )
-
-                # Calculate and show upload statistics
-                elapsed = (datetime.now() - start_time).total_seconds()
-                speed = file_size / (1024 * 1024 * elapsed) if elapsed > 0 else 0
-
-            # Create and upload thumbnail (regardless of type)
-            try:
-                # Skip thumbnail creation if video validation failed
-                if is_video and 'validation_msg' in locals() and not is_valid:
-                    error_msg = f"Skipping thumbnail creation for invalid video: {validation_msg}"
-                    print(f"  - {file_name}: {error_msg}")
-                    error_files.append((file_path, error_msg))
-                # Validate images before thumbnail creation
-                elif not is_video and not is_heic:
-                    is_valid_img, img_msg = validate_image_file(file_path)
-                    if not is_valid_img:
-                        error_msg = f"Skipping thumbnail creation for invalid image: {img_msg}"
-                        print(f"  - {file_name}: {error_msg}")
-                        error_files.append((file_path, error_msg))
-                        # Skip to next file
-                        if dry_run:
-                            continue
-                else:
-                    thumb_buffer = create_thumbnail(file_path)
-                    if thumb_buffer:
-                        thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.jpg"
-                        thumb_size = thumb_buffer.getbuffer().nbytes
-                        
-                        if not dry_run:
-                            minio_client.put_object(
-                                BUCKET_NAME,
-                                thumbnail_key,
-                                thumb_buffer,
-                                thumb_size,
-                                content_type="image/jpeg",
-                            )
-                    else:
-                        error_msg = f"Thumbnail creation failed - skipping"
-                        print(f"  - {file_name}: {error_msg}")
-                        error_files.append((file_path, error_msg))
+                # Update progress bar
+                progress_bar.update(file_size)
+                
             except Exception as e:
-                error_msg = f"Error processing thumbnail: {e} - skipping"
-                print(f"  - {file_name}: {error_msg}")
-                error_files.append((file_path, error_msg))
+                error_files.append((file_path, f"Processing error: {e}"))
+                progress_bar.update(file_size)
 
-            processed_count += 1
-            processed_size += file_size
-            main_progress.update(file_size)
-
-        except Exception as e:
-            error_msg = f"Error processing {file_name}: {e}"
-            print(f"\n{error_msg}")
-            error_files.append((file_path, error_msg))
-
-    main_progress.close()
+    progress_bar.close()
+    
+    # Calculate success statistics
+    success_count = sum(1 for r in results if r.get("success", False))
+    processed_size = sum(r.get("file_size", 0) for r in results if r.get("success", False))
     
     if dry_run:
-        print(f"Dry run completed: Processed {processed_count} of {total_files} media files")
-        if error_files:
-            print(f"\nFound {len(error_files)} files with errors:")
-            for path, error in error_files:
-                print(f"  - {os.path.basename(path)}: {error}")
-        else:
-            print("No errors found. All files should upload successfully.")
+        print(f"Dry run completed: Successfully processed {success_count} of {total_files} media files")
     else:
-        print(f"Uploaded {processed_count} of {total_files} media files to MinIO")
+        print(f"Uploaded {success_count} of {total_files} media files to MinIO")
         print(f"Total data transferred: {processed_size / (1024*1024):.2f} MB")
 
-        # Generate and upload the manifest file
-        generate_manifest(minio_client)
+    # Report errors
+    if error_files:
+        print(f"\nFound {len(error_files)} files with errors:")
+        for path, error in error_files:
+            print(f"  - {os.path.basename(path)}: {error}")
+    else:
+        print("No errors found. All files processed successfully.")
+
+    # Generate and upload the manifest file
+    if not dry_run and success_count > 0:
+        generate_manifest(get_minio_client())
 
 
 def validate_image_file(file_path: str) -> Tuple[bool, str]:
@@ -478,10 +491,24 @@ if __name__ == "__main__":
         action="store_true",
         help="Test processing without uploading (identify problem files)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=MAX_WORKERS_PROCESS,
+        help="Number of worker processes for parallel processing",
+    )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=MAX_WORKERS_THREAD,
+        help="Number of upload threads per process",
+    )
     args = parser.parse_args()
 
     # Set global options from command line
     SKIP_VIDEO_THUMBNAILS = args.skip_video_thumbnails
+    MAX_WORKERS_PROCESS = args.workers
+    MAX_WORKERS_THREAD = args.threads
 
     # Run the upload or just generate manifest
     if args.manifest_only:
