@@ -120,9 +120,21 @@ export default function usePhotoNavigation({
   // Set up keyboard event listeners for arrow keys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore keyboard events if the event originates from an input or contentEditable element
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
+      
+      // Use the raw event, not a synthetic one
       if (e.key === "ArrowRight") {
+        e.preventDefault(); // Prevent default browser behavior
         nextPhoto();
       } else if (e.key === "ArrowLeft") {
+        e.preventDefault(); // Prevent default browser behavior
         prevPhoto();
       }
     };

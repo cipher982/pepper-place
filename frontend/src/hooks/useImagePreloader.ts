@@ -4,6 +4,18 @@ import { Photo } from "../types";
 // Number of images to preload before and after current index
 const DEFAULT_BUFFER_SIZE = 3;
 
+// Helper function to detect media type
+const detectMediaType = (url: string): "image" | "video" => {
+  const videoExtensions = [".mp4", ".webm", ".mov", ".avi", ".mkv"];
+  const urlLower = url.toLowerCase();
+  
+  if (videoExtensions.some(ext => urlLower.endsWith(ext))) {
+    return "video";
+  }
+  
+  return "image";
+};
+
 interface UseImagePreloaderProps {
   photos: Photo[];
   currentIndex: number;
@@ -26,6 +38,11 @@ export default function useImagePreloader({
   const preloadImage = useCallback((url: string) => {
     // Skip if already loaded or currently loading
     if (imageCache.current.has(url) || loadingStatus.current.get(url)) {
+      return;
+    }
+
+    // Skip if this is a video file
+    if (detectMediaType(url) === "video") {
       return;
     }
 
