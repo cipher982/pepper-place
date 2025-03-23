@@ -15,7 +15,12 @@ from typing import Tuple, List, Dict, Any
 import concurrent.futures
 from functools import partial
 import threading
+from multiprocessing import cpu_count
+from concurrent.futures import ProcessPoolExecutor
+import imagehash
+import pillow_heif
 
+# Import utility functions
 from utils import get_exif_date
 from utils import convert_heic_to_jpeg
 from utils import get_content_type
@@ -148,14 +153,22 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
     """Process a single media file completely (thumbnailing and uploading)"""
     file_name = os.path.basename(file_path)
     file_lower = file_name.lower()
-    file_size = os.path.getsize(file_path)
     result = {
         "file_path": file_path, 
         "file_name": file_name,
-        "file_size": file_size,
+        "file_size": 0,
         "success": False,
         "error": None
     }
+    
+    # Validate file exists
+    if not os.path.exists(file_path):
+        result["error"] = f"File not found: {file_path}"
+        return result
+    
+    # Get file size only after confirming it exists
+    file_size = os.path.getsize(file_path)
+    result["file_size"] = file_size
 
     try:
         # Get year and month from metadata
@@ -191,6 +204,15 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
             if not is_valid:
                 result["error"] = f"Invalid video: {validation_msg}"
                 return result
+                
+        # Validate image files
+        elif not is_video:
+            # Validate non-HEIC images (HEIC gets special handling during conversion)
+            if not is_heic:
+                is_valid_img, img_msg = validate_image_file(file_path)
+                if not is_valid_img:
+                    result["error"] = f"Invalid image: {img_msg}"
+                    return result
 
         # Get the thread-local MinIO client if needed
         minio_client = None if dry_run else get_minio_client()
@@ -233,13 +255,6 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
         if is_video and (not is_valid):
             result["error"] = f"Skipping thumbnail for invalid video"
             return result
-        
-        # Validate images before thumbnail creation
-        if not is_video and not is_heic:
-            is_valid_img, img_msg = validate_image_file(file_path)
-            if not is_valid_img:
-                result["error"] = f"Invalid image: {img_msg}"
-                return result
 
         # Create thumbnail
         thumb_buffer = create_thumbnail(file_path)
@@ -359,7 +374,7 @@ def generate_manifest(minio_client):
         return False
 
 
-def upload_photos(photos_dir: str, dry_run=False):
+def upload_photos(photos_dir: str, dry_run=False, dedupe=False, threshold=5, skip_invalid=True):
     """Upload photos and videos to MinIO with year/month structure using parallel processing"""
     if dry_run:
         print(f"DRY RUN: Testing media processing from {photos_dir} (no uploads will occur)")
@@ -381,6 +396,25 @@ def upload_photos(photos_dir: str, dry_run=False):
                 or any(file_lower.endswith(ext) for ext in VIDEO_EXTENSIONS)
             ) and not any(file_lower.endswith(skip) for skip in SKIP_FILES):
                 eligible_files.append(os.path.join(root, file))
+
+    # Apply deduplication if enabled
+    if dedupe:
+        print(f"Applying deduplication with threshold {threshold}...")
+        
+        # Separate images and videos
+        image_files = [f for f in eligible_files if any(f.lower().endswith(ext) for ext in IMAGE_EXTENSIONS)]
+        video_files = [f for f in eligible_files if any(f.lower().endswith(ext) for ext in VIDEO_EXTENSIONS)]
+        
+        # Only deduplicate images, keep all videos
+        unique_images = filter_duplicates(image_files, threshold, skip_invalid)
+        
+        # Record original count for reporting
+        original_count = len(eligible_files)
+        
+        # Combine unique images with all videos
+        eligible_files = unique_images + video_files
+        
+        print(f"After deduplication: {len(eligible_files)} of {original_count} files will be processed")
 
     total_files = len(eligible_files)
     if total_files == 0:
@@ -472,6 +506,168 @@ def validate_image_file(file_path: str) -> Tuple[bool, str]:
         return False, f"Error validating image: {e.__class__.__name__}: {e}"
 
 
+def filter_duplicates(image_files: List[str], threshold: int = 5, skip_invalid: bool = True) -> List[str]:
+    """
+    Filter out duplicate images using perceptual hashing.
+    
+    Args:
+        image_files: List of image file paths
+        threshold: Perceptual hash difference threshold (default: 5)
+        skip_invalid: Whether to skip invalid/problematic images (default: True)
+        
+    Returns:
+        List of unique image file paths (one from each group of similar images)
+    """
+    print(f"Finding duplicate images with threshold {threshold}...")
+    
+    if not image_files:
+        return []
+    
+    # Compute hashes for all images
+    print("Computing image hashes...")
+    hash_dict = {}
+    
+    # Create a mapping of files to results for easier failure detection
+    file_to_result = {}
+    for i, file_path in enumerate(image_files):
+        file_to_result[file_path] = None
+    
+    # Use multiprocessing for hash computation
+    num_workers = max(1, cpu_count() - 1)  # Leave one CPU free
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        # Use a dict to track which future corresponds to which file
+        future_to_file = {executor.submit(compute_image_hash, file_path): file_path 
+                         for file_path in image_files}
+        
+        # Process results as they complete
+        for future in tqdm(
+            concurrent.futures.as_completed(future_to_file), 
+            total=len(image_files),
+            desc="Hashing images",
+            unit="img"
+        ):
+            file_path = future_to_file[future]
+            try:
+                result = future.result()
+                file_to_result[file_path] = result
+                
+                if result is not None:
+                    img_path, h_str = result
+                    if h_str not in hash_dict:
+                        hash_dict[h_str] = []
+                    hash_dict[h_str].append(img_path)
+            except Exception as e:
+                print(f"Exception while processing {file_path}: {e}")
+    
+    # Identify files that failed to hash
+    failed_files = [f for f in image_files if file_to_result[f] is None]
+    
+    if not hash_dict:
+        print("No valid image hashes found. Returning all files as unique.")
+        return image_files
+    
+    # Find all groups of similar images
+    similar_images = []
+    processed_hashes = set()
+    
+    for h1_str, img_list1 in tqdm(hash_dict.items(), desc="Finding duplicates", unit="hash"):
+        if h1_str in processed_hashes:
+            continue
+            
+        current_group = set(img_list1)
+        processed_hashes.add(h1_str)
+        
+        try:
+            h1 = imagehash.hex_to_hash(h1_str)
+            
+            # Find all similar hashes
+            for h2_str, img_list2 in hash_dict.items():
+                if h2_str in processed_hashes or h2_str == h1_str:
+                    continue
+                    
+                try:
+                    h2 = imagehash.hex_to_hash(h2_str)
+                    if h1 - h2 <= threshold:
+                        current_group.update(img_list2)
+                        processed_hashes.add(h2_str)
+                except Exception as e:
+                    print(f"Error comparing hashes {h1_str} and {h2_str}: {e}")
+                    continue
+            
+            if current_group:
+                similar_images.append(list(current_group))
+        except Exception as e:
+            print(f"Error processing hash {h1_str}: {e}")
+            continue
+    
+    # Create a set for tracking unique images to keep
+    unique_images = set()
+    
+    # For each group, keep the oldest image
+    for group in similar_images:
+        if group:
+            try:
+                # Sort by creation time (oldest first)
+                group.sort(key=lambda x: os.path.getctime(x))
+                # Add the first (oldest) image to the unique set
+                unique_images.add(group[0])
+            except Exception as e:
+                print(f"Error sorting group by creation time: {e}")
+                # If sorting fails, just add the first one
+                unique_images.add(group[0])
+    
+    # Also add images that have no duplicates (singleton groups)
+    for h_str, img_list in hash_dict.items():
+        if len(img_list) == 1 and not any(img_list[0] in group for group in similar_images if len(group) > 1):
+            unique_images.add(img_list[0])
+    
+    # Add files that failed hashing based on skip_invalid flag
+    if not skip_invalid:
+        for file_path in failed_files:
+            unique_images.add(file_path)
+    else:
+        print(f"Skipping {len(failed_files)} invalid/problematic images")
+    
+    # Print statistics
+    total_images = len(image_files)
+    unique_count = len(unique_images)
+    duplicate_count = total_images - unique_count - (len(failed_files) if skip_invalid else 0)
+    failed_count = len(failed_files)
+    
+    print(f"Deduplication: Found {total_images} total images")
+    print(f"Deduplication: Successfully hashed {total_images - failed_count} images")
+    print(f"Deduplication: Failed to hash {failed_count} images ({('skipping them' if skip_invalid else 'treating as unique')})")
+    print(f"Deduplication: Keeping {unique_count} unique images")
+    print(f"Deduplication: Filtered out {duplicate_count} duplicate images")
+    
+    return list(unique_images)
+
+
+def compute_image_hash(img_path):
+    """Compute perceptual hash for a single image."""
+    try:
+        # Register HEIF/HEIC opener in the worker process
+        pillow_heif.register_heif_opener()
+        
+        # For HEIC files, convert to JPEG first
+        if img_path.lower().endswith(('.heic', '.heif')):
+            try:
+                with Image.open(img_path) as img:
+                    h = imagehash.phash(img)
+                    return str(img_path), str(h)
+            except Exception as e:
+                print(f"Error processing HEIC {img_path}: {e}")
+                return None
+        else:
+            # For regular images
+            img = Image.open(img_path)
+            h = imagehash.phash(img)
+            return str(img_path), str(h)
+    except Exception as e:
+        print(f"Error processing {img_path}: {e}")
+        return None
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Upload photos to MinIO with organization"
@@ -506,6 +702,22 @@ if __name__ == "__main__":
         default=MAX_WORKERS_THREAD,
         help="Number of upload threads per process",
     )
+    parser.add_argument(
+        "--dedupe",
+        action="store_true",
+        help="Apply deduplication to images",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=5,
+        help="Deduplication threshold for perceptual hashing",
+    )
+    parser.add_argument(
+        "--include-invalid",
+        action="store_true",
+        help="Include invalid/problematic files (not recommended)",
+    )
     args = parser.parse_args()
 
     # Set global options from command line
@@ -519,4 +731,4 @@ if __name__ == "__main__":
         ensure_bucket_exists(minio_client)
         generate_manifest(minio_client)
     else:
-        upload_photos(args.dir, dry_run=args.dry_run)
+        upload_photos(args.dir, dry_run=args.dry_run, dedupe=args.dedupe, threshold=args.threshold, skip_invalid=not args.include_invalid)
