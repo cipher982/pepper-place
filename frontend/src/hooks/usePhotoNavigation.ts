@@ -21,16 +21,11 @@ export default function usePhotoNavigation({
   useEffect(() => {
     if (photos.length === 0) return;
     
-    // Sort by year (ascending) and then by month (ascending)
-    const chronologicalPhotos = [...photos].sort((a, b) => {
-      if (a.year !== b.year) return a.year - b.year;
-      return a.month - b.month;
-    });
-    
-    sortedPhotos.current = chronologicalPhotos;
+    // No need to sort photos since they come pre-sorted from the backend
+    sortedPhotos.current = [...photos];
     
     // Ensure current index is valid
-    if (currentIndex >= chronologicalPhotos.length) {
+    if (currentIndex >= photos.length) {
       setCurrentIndex(0);
     }
   }, [photos, currentIndex]);

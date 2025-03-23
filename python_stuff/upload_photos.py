@@ -25,10 +25,13 @@ from utils import validate_image_file
 from utils import get_video_metadata
 
 # Load environment variables
-load_dotenv("../.env")
+load_dotenv(".env")
 
 # MinIO configuration from environment variables
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+assert os.getenv("MINIO_ENDPOINT") is not None, "MINIO_ENDPOINT is not set"
+assert os.getenv("MINIO_ACCESS_KEY") is not None, "MINIO_ACCESS_KEY is not set"
+assert os.getenv("MINIO_SECRET_KEY") is not None, "MINIO_SECRET_KEY is not set"
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 BUCKET_NAME = "pepper-photos"
@@ -307,8 +310,8 @@ def generate_manifest(minio_client):
                 except (ValueError, IndexError) as e:
                     print(f"Error parsing path {obj.object_name}: {e}")
 
-        # Sort photos by year and month (newest first)
-        photos.sort(key=lambda p: (p["year"], p["month"]), reverse=True)
+        # Sort photos by year and month (oldest first)
+        photos.sort(key=lambda p: (p["year"], p["month"]), reverse=False)
 
         # Generate timeline data (photo counts by year)
         year_counts = {}

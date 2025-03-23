@@ -50,18 +50,26 @@ function App() {
     getPosition
   } = usePhotoNavigation({ photos });
   
-  // Current year derived from the current photo
-  const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
+  // Current year derived from the current photo - use 2014 as default (first year)
+  const [currentYear, setCurrentYear] = useState<number>(2014);
   
-  // Update current year when photo changes (if not dragging timeline)
+  // Update current year when photos and timeline are loaded
+  useEffect(() => {
+    // Only run this once when photos and timeline are first loaded
+    if (photos.length && timeline.length) {
+      // Start with the earliest year
+      const years = timeline.map(period => period.year);
+      const earliestYear = Math.min(...years);
+      setCurrentYear(earliestYear);
+      
+      // Jump to that year in the photo viewer
+      jumpToYear(earliestYear);
+    }
+  }, [photos.length, timeline.length, jumpToYear]);
+  
+  // Update current year based on currentPhoto (but only when not dragging timeline)
   useEffect(() => {
     if (isUserDraggingTimeline || !currentPhoto) {
-      if (!currentPhoto && timeline.length > 0) {
-        // Without a current photo, use the most recent year from timeline
-        const years = timeline.map(period => period.year);
-        const latestYear = Math.max(...years);
-        setCurrentYear(latestYear);
-      }
       return;
     }
     
@@ -69,7 +77,7 @@ function App() {
     if (currentYear !== currentPhoto.year) {
       setCurrentYear(currentPhoto.year);
     }
-  }, [currentPhoto, timeline, currentYear, isUserDraggingTimeline]);
+  }, [currentPhoto, currentYear, isUserDraggingTimeline]);
   
   // Handle year change from Timeline
   const handleYearChange = (year: number) => {

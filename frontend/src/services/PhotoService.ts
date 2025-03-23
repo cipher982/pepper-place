@@ -8,7 +8,9 @@ const CACHE = {
     TIMESTAMP: "photos_manifest_timestamp_"
   },
   // Cache duration in milliseconds (24 hours)
-  DURATION: 24 * 60 * 60 * 1000
+  DURATION: 24 * 60 * 60 * 1000,
+  // Disable cache during local development
+  DISABLED: process.env.NODE_ENV === "development"
 };
 
 // Constants for paths
@@ -32,6 +34,13 @@ class PhotoService {
     this.manifestCacheKey = `${CACHE.KEY_PREFIX.MANIFEST}${this.bucket}`;
     this.timestampCacheKey = `${CACHE.KEY_PREFIX.TIMESTAMP}${this.bucket}`;
     
+    // In development mode, clear any existing cache
+    if (CACHE.DISABLED) {
+      localStorage.removeItem(this.manifestCacheKey);
+      localStorage.removeItem(this.timestampCacheKey);
+      console.log("Development mode: cleared existing cache");
+    }
+    
     // Ensure endpoint has protocol
     let endpoint = config.endpoint;
     if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
@@ -46,6 +55,12 @@ class PhotoService {
 
   // Try to load manifest from local storage - simplified
   private loadManifestFromCache(): Manifest | null {
+    // Skip cache in development mode
+    if (CACHE.DISABLED) {
+      console.log("Cache disabled in development mode");
+      return null;
+    }
+    
     try {
       const cachedTimestamp = localStorage.getItem(this.timestampCacheKey);
       const cachedManifest = localStorage.getItem(this.manifestCacheKey);
@@ -81,6 +96,11 @@ class PhotoService {
 
   // Save manifest to local storage - simplified
   private saveManifestToCache(manifest: Manifest): void {
+    // Skip saving to cache in development mode
+    if (CACHE.DISABLED) {
+      return;
+    }
+    
     try {
       localStorage.setItem(this.manifestCacheKey, JSON.stringify(manifest));
       localStorage.setItem(this.timestampCacheKey, Date.now().toString());

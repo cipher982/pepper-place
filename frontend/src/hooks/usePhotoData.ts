@@ -14,7 +14,6 @@ const usePhotoData = (config: MinioConfig = DEFAULT_CONFIG) => {
   const [timeline, setTimeline] = useState<TimelinePeriod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
   
   // Service ref to avoid recreation
   const photoServiceRef = useRef<PhotoService | null>(null);
@@ -50,13 +49,6 @@ const usePhotoData = (config: MinioConfig = DEFAULT_CONFIG) => {
       
       setPhotos(photoData);
       setTimeline(timelineData);
-      
-      // Set initial year to the most recent year with photos
-      if (timelineData.length > 0) {
-        const years = timelineData.map(period => period.year);
-        const latestYear = Math.max(...years);
-        setCurrentYear(latestYear);
-      }
     } catch (err) {
       console.error("Error loading photo data:", err);
       setError("Failed to load photos. Please check your connection and storage configuration.");
@@ -107,8 +99,6 @@ const usePhotoData = (config: MinioConfig = DEFAULT_CONFIG) => {
     timeline,
     loading,
     error,
-    currentYear,
-    setCurrentYear,
     refreshData
   };
 };
