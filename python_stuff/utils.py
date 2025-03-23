@@ -374,6 +374,75 @@ def get_video_metadata(video_path: str) -> Tuple[Optional[float], Optional[float
         return None, None
 
 
+def optimize_video(video_path: str) -> Optional[io.BytesIO]:
+    """
+    Optimize video using FFmpeg with the following settings:
+    - Resolution: 1920x1080 max (preserving aspect ratio)
+    - Codec: H.265/HEVC
+    - Framerate: 30fps max (preserving original if lower)
+    - Audio: AAC @ 128k
+    - Metadata: Preserved
+    - Container: MP4 with faststart
+    
+    Args:
+        video_path: Path to the input video file
+        
+    Returns:
+        Optional[io.BytesIO]: Buffer containing the optimized video, or None if optimization fails
+    """
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=True) as temp_mp4:
+            # Build the FFmpeg command
+            cmd = [
+                "ffmpeg",
+                "-y",  # Overwrite output file if exists
+                "-i", video_path,  # Input file
+                # Video settings
+                "-vf", "scale=w=min(iw\\,1920):h=min(ih\\,1080):force_original_aspect_ratio=decrease,fps=min(30\\,source_fps)",  # Scale and FPS
+                "-c:v", "hevc",  # H.265/HEVC codec
+                "-crf", "28",  # Quality setting (23-28 is good for HEVC)
+                # Audio settings
+                "-c:a", "aac",
+                "-b:a", "128k",
+                # Container settings
+                "-movflags", "+faststart",  # Enable fast start for web playback
+                "-map_metadata", "0",  # Preserve metadata
+                temp_mp4.name  # Output file
+            ]
+            
+            # Run FFmpeg
+            process = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if process.returncode != 0:
+                print(f"FFmpeg error optimizing video {os.path.basename(video_path)}: {process.stderr[:200]}...")
+                return None
+            
+            # Check if output was created
+            if not os.path.exists(temp_mp4.name) or os.path.getsize(temp_mp4.name) == 0:
+                print(f"FFmpeg didn't create a valid output for {os.path.basename(video_path)}")
+                return None
+            
+            # Read the optimized video into a buffer
+            with open(temp_mp4.name, "rb") as f:
+                video_data = f.read()
+                buffer = io.BytesIO(video_data)
+                buffer.seek(0)
+                return buffer
+                
+    except subprocess.TimeoutExpired:
+        print(f"Timeout while optimizing video {os.path.basename(video_path)} - ffmpeg process took too long")
+        return None
+    except Exception as e:
+        print(f"Error optimizing video {os.path.basename(video_path)}: {e.__class__.__name__}: {e}")
+        return None
+
+
 def validate_image_file(file_path: str) -> Tuple[bool, str]:
     """
     Validate an image file to check if it can be processed correctly.

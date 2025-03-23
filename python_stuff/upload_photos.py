@@ -24,11 +24,11 @@ import pillow_heif
 # Import utility functions
 from utils import get_exif_date
 from utils import convert_heic_to_jpeg
-from utils import get_content_type
 from utils import create_video_thumbnail
 from utils import validate_video_file
 from utils import validate_image_file
 from utils import get_video_metadata
+from utils import optimize_video
 
 # Load environment variables
 load_dotenv(".env")
@@ -279,14 +279,23 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
 
         # MAIN MEDIA UPLOAD - Process based on file type
         if is_video:
-            # For videos, upload directly
-            ext = os.path.splitext(file_name)[1].lower()
-            media_key = f"media/{year}/{month:02d}/{file_hash}{ext}"
-            
-            if not dry_run:
-                minio_client.fput_object(
-                    BUCKET_NAME, media_key, file_path, content_type=get_content_type(file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS)
-                )
+            # For videos, optimize and upload
+            optimized_buffer = optimize_video(file_path)
+            if optimized_buffer:
+                media_key = f"media/{year}/{month:02d}/{file_hash}.mp4"
+                media_size = optimized_buffer.getbuffer().nbytes
+                
+                if not dry_run:
+                    minio_client.put_object(
+                        BUCKET_NAME,
+                        media_key,
+                        optimized_buffer,
+                        media_size,
+                        content_type="video/mp4",
+                    )
+            else:
+                result["error"] = "Failed to optimize video"
+                return result
         else:
             # For images, create optimized version
             main_buffer = create_main_image(file_path)
