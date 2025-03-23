@@ -110,11 +110,16 @@ def ensure_bucket_exists(minio_client):
 
 def create_thumbnail(file_path):
     """Create a thumbnail for an image or video"""
+    # Smaller thumbnail dimensions - aligned with display size
+    THUMBNAIL_SIZE = (80, 100)
+    THUMBNAIL_QUALITY = 70  # Lower quality is fine for small thumbnails
+    THUMBNAIL_FORMAT = "WEBP"  # WebP format for better compression
+    
     if any(file_path.lower().endswith(ext) for ext in VIDEO_EXTENSIONS):
         if SKIP_VIDEO_THUMBNAILS:
             print("Skipping video thumbnail (disabled)")
             return None
-        return create_video_thumbnail(file_path)
+        return create_video_thumbnail(file_path, size=THUMBNAIL_SIZE)
     elif file_path.lower().endswith((".heic", ".heif")) and CONVERT_HEIC:
         # Convert HEIC to JPEG first, then create thumbnail
         jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
@@ -123,9 +128,9 @@ def create_thumbnail(file_path):
                 image = Image.open(jpeg_buffer)
                 # Apply orientation correction
                 image = apply_exif_orientation(image)
-                image.thumbnail((300, 300))
+                image.thumbnail(THUMBNAIL_SIZE)
                 thumbnail_buffer = io.BytesIO()
-                image.save(thumbnail_buffer, format="JPEG", quality=WEB_IMAGE_QUALITY)
+                image.save(thumbnail_buffer, format=THUMBNAIL_FORMAT, quality=THUMBNAIL_QUALITY)
                 thumbnail_buffer.seek(0)
                 return thumbnail_buffer
             except Exception as e:
@@ -137,15 +142,15 @@ def create_thumbnail(file_path):
             image = Image.open(file_path)
             # Apply orientation correction
             image = apply_exif_orientation(image)
-            image.thumbnail((300, 300))
+            image.thumbnail(THUMBNAIL_SIZE)
             thumbnail_buffer = io.BytesIO()
-            # Save as JPEG for web compatibility
+            # Save as WebP for better compression and web compatibility
             if image.format == "PNG" and image.mode == "RGBA":
-                # Handle transparent PNGs
-                image.save(thumbnail_buffer, format="PNG")
+                # For transparent images, WebP also supports transparency
+                image.save(thumbnail_buffer, format=THUMBNAIL_FORMAT)
             else:
                 image.save(
-                    thumbnail_buffer, format=WEB_IMAGE_FORMAT, quality=WEB_IMAGE_QUALITY
+                    thumbnail_buffer, format=THUMBNAIL_FORMAT, quality=THUMBNAIL_QUALITY
                 )
             thumbnail_buffer.seek(0)
             return thumbnail_buffer
@@ -303,13 +308,13 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
         # Create and upload thumbnail
         # Skip thumbnail creation if video validation failed or image is invalid
         if is_video and (not is_valid):
-            result["error"] = f"Skipping thumbnail for invalid video"
+            result["error"] = "Skipping thumbnail for invalid video"
             return result
 
         # Create thumbnail
         thumb_buffer = create_thumbnail(file_path)
         if thumb_buffer:
-            thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.jpg"
+            thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.webp"
             thumb_size = thumb_buffer.getbuffer().nbytes
             
             if not dry_run:
@@ -318,7 +323,7 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
                     thumbnail_key,
                     thumb_buffer,
                     thumb_size,
-                    content_type="image/jpeg",
+                    content_type="image/webp",
                 )
         else:
             result["error"] = "Thumbnail creation failed"
@@ -416,7 +421,7 @@ def generate_manifest(minio_client):
         # Clean up temporary file
         os.unlink(temp_file_path)
 
-        print(f"✓ Manifest uploaded successfully")
+        print("✓ Manifest uploaded successfully")
         return True
 
     except Exception as e:
@@ -533,40 +538,10 @@ def upload_photos(photos_dir: str, dry_run=False, dedupe=False, threshold=5, ski
         generate_manifest(get_minio_client())
 
 
-def validate_image_file(file_path: str) -> Tuple[bool, str]:
-    """
-    Validate an image file to check if it can be processed correctly.
-    
-    Args:
-        file_path: Path to the image file
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    try:
-        img = Image.open(file_path)
-        width, height = img.size
-        
-        # Check for invalid dimensions
-        if width <= 0 or height <= 0:
-            return False, f"Invalid image dimensions: {width}x{height}"
-            
-        return True, f"Valid image: {width}x{height}"
-    except Exception as e:
-        return False, f"Error validating image: {e.__class__.__name__}: {e}"
-
 
 def filter_duplicates(image_files: List[str], threshold: int = 5, skip_invalid: bool = True) -> List[str]:
     """
     Filter out duplicate images using perceptual hashing.
-    
-    Args:
-        image_files: List of image file paths
-        threshold: Perceptual hash difference threshold (default: 5)
-        skip_invalid: Whether to skip invalid/problematic images (default: True)
-        
-    Returns:
-        List of unique image file paths (one from each group of similar images)
     """
     print(f"Finding duplicate images with threshold {threshold}...")
     

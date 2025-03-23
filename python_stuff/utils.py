@@ -166,11 +166,14 @@ def convert_heic_to_jpeg(
         return None
 
 
-def create_video_thumbnail(video_path: str) -> Optional[io.BytesIO]:
+def create_video_thumbnail(video_path: str, size: Tuple[int, int] = (300, -1)) -> Optional[io.BytesIO]:
     """Extract a thumbnail from a video file using ffmpeg"""
     try:
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=True) as temp_jpg:
             # Set a timeout for ffmpeg process
+            width, height = size
+            scale_param = f"scale={width}:{height if height != -1 else '-1'}"
+            
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -181,7 +184,7 @@ def create_video_thumbnail(video_path: str) -> Optional[io.BytesIO]:
                 "-vframes",
                 "1",
                 "-vf",
-                "scale=300:-1",
+                scale_param,
                 temp_jpg.name,
             ]
             

@@ -229,8 +229,8 @@ class PhotoService {
         const filename = pathParts[3];
         const filenameWithoutExt = filename.substring(0, filename.lastIndexOf("."));
         
-        // Reconstruct as thumbnails/YYYY/MM/filename.jpg (thumbnails are always jpg)
-        const thumbnailPath = `${PATHS.THUMBNAIL_PREFIX}${pathParts[1]}/${pathParts[2]}/${filenameWithoutExt}.jpg`;
+        // Reconstruct as thumbnails/YYYY/MM/filename.webp (thumbnails are now WebP format)
+        const thumbnailPath = `${PATHS.THUMBNAIL_PREFIX}${pathParts[1]}/${pathParts[2]}/${filenameWithoutExt}.webp`;
         return `${this.baseUrl}/${thumbnailPath}`;
       }
     }
