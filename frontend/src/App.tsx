@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import Timeline from "./components/Timeline";
 import PhotoGallery from "./components/PhotoGallery";
+import DebugPanel from "./components/DebugPanel";
+import SortDebugger from "./components/SortDebugger";
+import MetadataChecker from "./components/MetadataChecker";
+import YearJumpDebugger from "./components/YearJumpDebugger";
 import usePhotoData from "./hooks/usePhotoData";
 import usePhotoNavigation from "./hooks/usePhotoNavigation";
 import { 
@@ -11,6 +15,15 @@ import {
   ErrorState,
   TimelineGalleryContainer 
 } from "./styles/App.styles";
+
+// Enable debug mode with query param (e.g., ?debug=true)
+const isDebugMode = (() => {
+  if (typeof window !== "undefined") {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("debug") === "true";
+  }
+  return false;
+})();
 
 function App() {
   // Use config from environment variables
@@ -91,6 +104,26 @@ function App() {
         />
         
         <PhotoGallery photos={photos} />
+        
+        {/* Debug components - only shown in debug mode */}
+        {isDebugMode && (
+          <>
+            <DebugPanel 
+              photos={photos}
+              timeline={timeline}
+              currentPhoto={currentPhoto}
+              currentIndex={currentIndex}
+            />
+            <SortDebugger photos={photos} />
+            <MetadataChecker photos={photos} />
+            <YearJumpDebugger
+              photos={photos}
+              timeline={timeline}
+              currentYear={currentYear}
+              onYearChange={handleYearChange}
+            />
+          </>
+        )}
       </TimelineGalleryContainer>
     );
   };
