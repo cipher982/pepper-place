@@ -56,6 +56,24 @@ export const GalleryContainer = styled.div`
     }
   }
   
+  /* Add a style for the react-window list container */
+  .react-window-list {
+    background-color: ${({ theme }) => theme.colors.background.secondary};
+    border-top: 1px solid ${({ theme }) => theme.colors.ui.border};
+    margin-top: ${({ theme }) => theme.spacing.md};
+    padding: ${({ theme }) => theme.spacing.md} 0;
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+      padding: ${({ theme }) => theme.spacing.sm} 0;
+      margin-top: ${({ theme }) => theme.spacing.sm};
+    }
+    
+    @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+      padding: ${({ theme }) => theme.spacing.xs} 0;
+      margin-top: ${({ theme }) => theme.spacing.xs};
+    }
+  }
+  
   .image-gallery-slide {
     display: flex;
     align-items: center;

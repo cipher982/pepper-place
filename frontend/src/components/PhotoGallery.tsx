@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect } from "react";
 import ImageGallery from "react-image-gallery";
 import "react-image-gallery/styles/css/image-gallery.css";
 import { Photo } from "../types";
@@ -6,6 +6,7 @@ import usePhotoNavigation from "../hooks/usePhotoNavigation";
 import useImagePreloader from "../hooks/useImagePreloader";
 import { detectMediaType } from "../utils/media";
 import { VideoSlide, ProgressiveImage } from "./MediaItems";
+import ThumbnailBar from "./ThumbnailBar";
 import {
   GalleryContainer,
   PositionIndicator,
@@ -60,6 +61,8 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
       if (mediaType === 'video') {
         return {
           original: photo.url,
+          // We're still including the thumbnail property as it's needed for the react-image-gallery items structure
+          // but we're disabling the thumbnails display, so these won't create network requests
           thumbnail: thumbnailUrl,
           thumbnailHeight: 60,
           thumbnailWidth: 80,
@@ -94,6 +97,14 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
     if (onYearChange && photos[newIndex] && photos[newIndex].year) {
       onYearChange(photos[newIndex].year);
     }
+    
+    // Update current index
+    setCurrentIndex(newIndex);
+  };
+  
+  // Handle thumbnail click
+  const handleThumbnailClick = (index: number) => {
+    setCurrentIndex(index);
   };
   
   // Get the position information for the indicator
@@ -116,7 +127,7 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
         showFullscreenButton={true}
         showPlayButton={false}
         showNav={true}
-        showThumbnails={true}
+        showThumbnails={false} // Disable built-in thumbnails
         showBullets={false}
         startIndex={currentIndex || 0}
         onSlide={handleSlideChange}
@@ -124,6 +135,14 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
         slideInterval={3000}
         lazyLoad={true}
         disableKeyDown={true}
+      />
+      
+      {/* Add our custom virtualized ThumbnailBar */}
+      <ThumbnailBar
+        photos={photos}
+        currentIndex={currentIndex}
+        onSelect={handleThumbnailClick}
+        itemSize={80}
       />
       
       <PositionIndicator>

@@ -4,6 +4,8 @@ import { detectMediaType } from "../utils/media";
 
 // Number of images to preload before and after current index
 const DEFAULT_BUFFER_SIZE = 3;
+// Number of thumbnails to preload before and after current index
+const THUMBNAIL_BUFFER_SIZE = 10;
 
 // Helper function to detect media type
 // const detectMediaType = (url: string): "image" | "video" => {
@@ -36,7 +38,7 @@ export default function useImagePreloader({
   const loadingStatus = useRef<Map<string, boolean>>(new Map());
 
   // Preload a single image and store it in cache
-  const preloadImage = useCallback((url: string) => {
+  const preloadImage = useCallback((url: string, isThumbnail = false) => {
     // Skip if already loaded or currently loading
     if (imageCache.current.has(url) || loadingStatus.current.get(url)) {
       return;
@@ -68,7 +70,7 @@ export default function useImagePreloader({
   }, []);
 
   // Get indexes to preload based on navigation direction and buffer size
-  const getPreloadIndexes = useCallback((direction: "forward" | "backward" | null) => {
+  const getPreloadIndexes = useCallback((direction: "forward" | "backward" | null, bufferSize: number) => {
     const indexes: number[] = [];
     
     // Always include the current index
@@ -107,23 +109,34 @@ export default function useImagePreloader({
     }
     
     return indexes;
-  }, [currentIndex, bufferSize, photos.length]);
+  }, [currentIndex, photos.length]);
 
   // Trigger preloading when current index or direction changes
   useEffect(() => {
     if (photos.length === 0) return;
 
-    const preloadIndexes = getPreloadIndexes(navigationDirection);
+    // Get indexes for full images (smaller buffer)
+    const imageIndexes = getPreloadIndexes(navigationDirection, bufferSize);
     
-    // Preload both full images and thumbnails
-    preloadIndexes.forEach(index => {
+    // Get indexes for thumbnails (larger buffer)
+    const thumbnailIndexes = getPreloadIndexes(navigationDirection, THUMBNAIL_BUFFER_SIZE);
+    
+    // Preload main images
+    imageIndexes.forEach(index => {
       const photo = photos[index];
       if (photo) {
         preloadImage(photo.url);
-        preloadImage(photo.thumbnailUrl);
       }
     });
-  }, [photos, currentIndex, navigationDirection, getPreloadIndexes, preloadImage]);
+    
+    // Preload thumbnail images (only those that will be visible in the ThumbnailBar)
+    thumbnailIndexes.forEach(index => {
+      const photo = photos[index];
+      if (photo) {
+        preloadImage(photo.thumbnailUrl, true);
+      }
+    });
+  }, [photos, currentIndex, navigationDirection, bufferSize, getPreloadIndexes, preloadImage]);
 
   return {
     isImageCached,
