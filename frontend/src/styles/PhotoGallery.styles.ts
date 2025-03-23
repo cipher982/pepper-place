@@ -25,7 +25,8 @@ export const GalleryContainer = styled.div`
     overflow: hidden;
     box-shadow: 0 8px 20px ${({ theme }) => theme.colors.ui.shadow};
     width: 100%; /* Force gallery to respect container width */
-    max-width: 100%; /* Never exceed the container */
+    max-width: 786px; /* Set maximum width to 786px to prevent whitespace on portrait images */
+    margin: 0 auto; /* Center the gallery */
   }
   
   .image-gallery-content {
@@ -35,14 +36,13 @@ export const GalleryContainer = styled.div`
   
   .image-gallery-slide-wrapper {
     /* Changed fixed height to responsive values */
-    height: 52vh;
-    max-height: 550px;
+    height: 442px; /* Match landscape image height exactly */
+    max-height: 442px; /* Set equal to height to prevent stretching */
     display: flex;
     align-items: center;
     justify-content: center;
     background-color: ${({ theme }) => theme.colors.background.tertiary};
     width: 100%; /* Ensure full width */
-    max-width: 100%; /* Never exceed container width */
     overflow: hidden; /* Prevent overflow */
     
     @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
@@ -92,7 +92,7 @@ export const GalleryContainer = styled.div`
     transition: opacity ${({ theme }) => theme.transitions.medium};
     /* Maintaining aspect ratio is important */
     width: auto;
-    height: auto;
+    height: 100%; /* Force height to 100% to fill container vertically */
     
     @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
       max-width: 100%; /* Make sure image doesn't exceed container on smaller screens */
@@ -275,7 +275,6 @@ export const MediaContainer = styled.div`
   justify-content: center;
   align-items: center;
   position: relative;
-  max-width: 100%;
   overflow: hidden;
 `;
 
@@ -325,11 +324,11 @@ export const PlayPauseIndicator = styled.div`
 export const StyledProgressiveImage = styled.img<{ $loaded: boolean }>`
   max-height: 100%;
   max-width: 100%;
-  object-fit: contain;
+  object-fit: cover;
   transition: opacity ${({ theme }) => theme.transitions.medium};
   opacity: ${({ $loaded }) => ($loaded ? "1" : "0.5")};
   
   /* Ensure images are responsive */
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
 `; 
