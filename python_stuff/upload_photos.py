@@ -3,6 +3,7 @@ from datetime import datetime
 from minio import Minio
 from minio.error import S3Error
 from PIL import Image
+from PIL.ExifTags import TAGS
 import io
 import hashlib
 from dotenv import load_dotenv
@@ -120,6 +121,8 @@ def create_thumbnail(file_path):
         if jpeg_buffer:
             try:
                 image = Image.open(jpeg_buffer)
+                # Apply orientation correction
+                image = apply_exif_orientation(image)
                 image.thumbnail((300, 300))
                 thumbnail_buffer = io.BytesIO()
                 image.save(thumbnail_buffer, format="JPEG", quality=WEB_IMAGE_QUALITY)
@@ -132,6 +135,8 @@ def create_thumbnail(file_path):
     else:
         try:
             image = Image.open(file_path)
+            # Apply orientation correction
+            image = apply_exif_orientation(image)
             image.thumbnail((300, 300))
             thumbnail_buffer = io.BytesIO()
             # Save as JPEG for web compatibility
@@ -147,6 +152,51 @@ def create_thumbnail(file_path):
         except Exception as e:
             print(f"Error creating thumbnail for {file_path}: {e}")
             return None
+
+
+def apply_exif_orientation(image):
+    """Apply the EXIF orientation to the image"""
+    try:
+        exif = image._getexif()
+        if exif is None:
+            return image
+            
+        orientation_key = next((key for key, value in TAGS.items() if value == 'Orientation'), None)
+        if orientation_key is None or orientation_key not in exif:
+            return image
+            
+        orientation = exif[orientation_key]
+        
+        # Orientation values and their corresponding transformations:
+        # 1: Normal (no rotation, no flip)
+        # 2: Mirrored horizontally
+        # 3: Rotated 180 degrees
+        # 4: Mirrored vertically
+        # 5: Mirrored horizontally and rotated 90 degrees counter-clockwise
+        # 6: Rotated 90 degrees counter-clockwise
+        # 7: Mirrored horizontally and rotated 90 degrees clockwise
+        # 8: Rotated 90 degrees clockwise
+        
+        if orientation == 1:
+            return image
+        elif orientation == 2:
+            return image.transpose(Image.FLIP_LEFT_RIGHT)
+        elif orientation == 3:
+            return image.transpose(Image.ROTATE_180)
+        elif orientation == 4:
+            return image.transpose(Image.FLIP_TOP_BOTTOM)
+        elif orientation == 5:
+            return image.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90)
+        elif orientation == 6:
+            return image.transpose(Image.ROTATE_270)
+        elif orientation == 7:
+            return image.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_270)
+        elif orientation == 8:
+            return image.transpose(Image.ROTATE_90)
+        return image
+    except Exception as e:
+        print(f"Error applying EXIF orientation: {e}")
+        return image
 
 
 def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
