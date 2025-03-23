@@ -52,9 +52,14 @@ SKIP_FILES = (".ds_store", "thumbs.db")
 
 # Format conversion settings
 CONVERT_HEIC = True  # Convert HEIC to JPEG
-WEB_IMAGE_FORMAT = "JPEG"  # Target format for web images
+WEB_IMAGE_FORMAT = "WEBP"  # Target format for web images
 WEB_IMAGE_QUALITY = 85  # Quality for web images
 SKIP_VIDEO_THUMBNAILS = False  # Skip video thumbnail creation
+
+# Image optimization settings
+MAIN_IMAGE_SIZE = (1920, 1080)  # 2x Retina resolution
+MAIN_IMAGE_FORMAT = "WEBP"  # Modern format for better compression
+MAIN_IMAGE_QUALITY = 85  # High quality for main images
 
 # Maximum file size and duration limits
 MAX_VIDEO_SIZE_MB = 10  # Maximum video size in MB
@@ -273,37 +278,33 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
         minio_client = None if dry_run else get_minio_client()
 
         # MAIN MEDIA UPLOAD - Process based on file type
-        if is_heic and CONVERT_HEIC:
-            # For HEIC, convert to JPEG for web viewing
-            jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
-            if jpeg_buffer:
-                media_key = f"media/{year}/{month:02d}/{file_hash}.jpg"
-                media_size = jpeg_buffer.getbuffer().nbytes
+        if is_video:
+            # For videos, upload directly
+            ext = os.path.splitext(file_name)[1].lower()
+            media_key = f"media/{year}/{month:02d}/{file_hash}{ext}"
+            
+            if not dry_run:
+                minio_client.fput_object(
+                    BUCKET_NAME, media_key, file_path, content_type=get_content_type(file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS)
+                )
+        else:
+            # For images, create optimized version
+            main_buffer = create_main_image(file_path)
+            if main_buffer:
+                media_key = f"media/{year}/{month:02d}/{file_hash}.webp"
+                media_size = main_buffer.getbuffer().nbytes
                 
                 if not dry_run:
                     minio_client.put_object(
                         BUCKET_NAME,
                         media_key,
-                        jpeg_buffer,
+                        main_buffer,
                         media_size,
-                        content_type="image/jpeg",
+                        content_type="image/webp",
                     )
             else:
-                result["error"] = "Failed to convert HEIC file"
+                result["error"] = "Failed to create optimized image"
                 return result
-        else:
-            # For other files, upload directly
-            ext = os.path.splitext(file_name)[1].lower()
-            media_key = f"media/{year}/{month:02d}/{file_hash}{ext}"
-
-            # Get content type
-            content_type = get_content_type(file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS)
-
-            # Upload file
-            if not dry_run:
-                minio_client.fput_object(
-                    BUCKET_NAME, media_key, file_path, content_type=content_type
-                )
 
         # Create and upload thumbnail
         # Skip thumbnail creation if video validation failed or image is invalid
@@ -690,6 +691,62 @@ def compute_image_hash(img_path):
             return str(img_path), str(h)
     except Exception as e:
         print(f"Error processing {img_path}: {e}")
+        return None
+
+
+def create_main_image(file_path):
+    """Create an optimized main image for gallery viewing"""
+    if file_path.lower().endswith((".heic", ".heif")) and CONVERT_HEIC:
+        # Convert HEIC to intermediate format first
+        jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
+        if jpeg_buffer:
+            try:
+                image = Image.open(jpeg_buffer)
+                # Apply orientation correction
+                image = apply_exif_orientation(image)
+            except Exception as e:
+                print(f"Error creating main image from HEIC {file_path}: {e}")
+                return None
+        else:
+            return None
+    else:
+        try:
+            image = Image.open(file_path)
+            # Apply orientation correction
+            image = apply_exif_orientation(image)
+        except Exception as e:
+            print(f"Error opening image {file_path}: {e}")
+            return None
+
+    try:
+        # Calculate aspect ratio preserving resize dimensions
+        aspect_ratio = image.width / image.height
+        target_ratio = MAIN_IMAGE_SIZE[0] / MAIN_IMAGE_SIZE[1]
+        
+        if aspect_ratio > target_ratio:
+            # Image is wider than target ratio
+            new_width = MAIN_IMAGE_SIZE[0]
+            new_height = int(new_width / aspect_ratio)
+        else:
+            # Image is taller than target ratio
+            new_height = MAIN_IMAGE_SIZE[1]
+            new_width = int(new_height * aspect_ratio)
+        
+        # Resize image
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Save as WebP
+        main_buffer = io.BytesIO()
+        if image.mode == "RGBA":
+            # Handle transparency
+            image.save(main_buffer, format=MAIN_IMAGE_FORMAT, lossless=True)
+        else:
+            image.save(main_buffer, format=MAIN_IMAGE_FORMAT, quality=MAIN_IMAGE_QUALITY)
+        
+        main_buffer.seek(0)
+        return main_buffer
+    except Exception as e:
+        print(f"Error processing main image for {file_path}: {e}")
         return None
 
 
