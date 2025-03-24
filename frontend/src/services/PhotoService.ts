@@ -40,10 +40,12 @@ class PhotoService {
       console.log("Development mode: cleared existing cache");
     }
     
-    // Ensure endpoint has protocol
+    // Ensure endpoint has protocol (use appropriate protocol for environment)
     let endpoint = config.endpoint;
     if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
-      endpoint = `http://${endpoint}`;
+      // Use HTTP for development, HTTPS for production
+      const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
+      endpoint = `${protocol}://${endpoint}`;
     }
     
     // Build base URL for direct access (without authentication)
