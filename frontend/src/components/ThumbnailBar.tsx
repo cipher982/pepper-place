@@ -69,7 +69,7 @@ const ThumbnailItem: React.FC<{
         alt={`Thumbnail ${index + 1}`}
         onClick={handleClick}
         $isActive={isActive}
-        loading="lazy"
+        loading="eager"
       />
     </div>
   );

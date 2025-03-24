@@ -5,7 +5,7 @@ import { detectMediaType } from "../utils/media";
 // Number of images to preload before and after current index
 const DEFAULT_BUFFER_SIZE = 3;
 // Number of thumbnails to preload before and after current index
-const THUMBNAIL_BUFFER_SIZE = 10;
+const THUMBNAIL_BUFFER_SIZE = 100;
 
 // Helper function to detect media type
 // const detectMediaType = (url: string): "image" | "video" => {
