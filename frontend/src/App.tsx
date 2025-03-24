@@ -37,7 +37,7 @@ function App() {
     };
   }, []);
   
-  const { photos, timeline, loading, error, refreshData } = usePhotoData(minioConfig);
+  const { photos, timeline, loading, error } = usePhotoData(minioConfig);
   
   // Flag to track if year change is from timeline vs photo navigation
   const [isUserDraggingTimeline, setIsUserDraggingTimeline] = useState(false);
@@ -65,7 +65,7 @@ function App() {
       // Jump to that year in the photo viewer
       jumpToYear(earliestYear);
     }
-  }, [photos.length, timeline.length, jumpToYear]);
+  }, [photos.length, timeline.length, jumpToYear, timeline]);
   
   // Update current year based on currentPhoto (but only when not dragging timeline)
   useEffect(() => {
