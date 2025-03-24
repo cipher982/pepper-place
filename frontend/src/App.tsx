@@ -39,16 +39,24 @@ function App() {
   
   const { photos, timeline, loading, error } = usePhotoData(minioConfig);
   
-  // Flag to track if year change is from timeline vs photo navigation
-  const [isUserDraggingTimeline, setIsUserDraggingTimeline] = useState(false);
+  // Flag to track navigation source: either "timeline" or "keyboard" or null
+  const [navigationSource, setNavigationSource] = useState<"timeline" | "keyboard" | null>(null);
   
   // Photo navigation hook
   const {
     currentPhoto,
     currentIndex,
     jumpToYear,
-    getPosition
-  } = usePhotoNavigation({ photos });
+    getPosition,
+    setKeyboardNavigationActive,
+    setCurrentIndex
+  } = usePhotoNavigation({ 
+    photos,
+    onNavigationChange: (isKeyboardActive) => {
+      // When keyboard navigation occurs, set the source
+      setNavigationSource(isKeyboardActive ? "keyboard" : null);
+    }
+  });
   
   // Current year derived from the current photo - use 2014 as default (first year)
   const [currentYear, setCurrentYear] = useState<number>(2014);
@@ -67,25 +75,25 @@ function App() {
     }
   }, [photos.length, timeline.length, jumpToYear, timeline]);
   
-  // Update current year based on currentPhoto (but only when not dragging timeline)
+  // Update current year based on currentPhoto (but only when not from timeline)
   useEffect(() => {
-    if (isUserDraggingTimeline || !currentPhoto) {
+    if (navigationSource === "timeline" || !currentPhoto) {
       return;
     }
     
-    // Update the year if different from current photo
-    if (currentYear !== currentPhoto.year) {
-      setCurrentYear(currentPhoto.year);
-    }
-  }, [currentPhoto, currentYear, isUserDraggingTimeline]);
+    // Create a precise year value with month fraction
+    const photoYearValue = currentPhoto.year + (currentPhoto.month - 1) / 12;
+    setCurrentYear(photoYearValue);
+  }, [currentPhoto, navigationSource]);
   
   // Handle year change from Timeline
   const handleYearChange = (year: number) => {
-    setIsUserDraggingTimeline(true);
+    setNavigationSource("timeline");
+    // Preserve the fractional part representing months
     setCurrentYear(year);
     jumpToYear(year);
-    // Reset the drag flag after a short delay
-    setTimeout(() => setIsUserDraggingTimeline(false), 100);
+    // Reset the navigation source after a delay
+    setTimeout(() => setNavigationSource(null), 300);
   };
 
   // Get position information for indicator
@@ -115,6 +123,10 @@ function App() {
           photos={photos} 
           initialYear={currentYear}
           onYearChange={handleYearChange}
+          navigationSource={navigationSource}
+          currentIndex={currentIndex}
+          setCurrentIndex={setCurrentIndex}
+          currentPhoto={currentPhoto}
         />
         
         {/* Debug components - only shown in debug mode */}

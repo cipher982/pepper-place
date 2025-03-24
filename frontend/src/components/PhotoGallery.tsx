@@ -1,9 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 // @ts-ignore - Ignoring the type error with ImageGallery import
 import ImageGallery from "react-image-gallery";
 import "react-image-gallery/styles/css/image-gallery.css";
 import { Photo } from "../types";
-import usePhotoNavigation from "../hooks/usePhotoNavigation";
 import useImagePreloader from "../hooks/useImagePreloader";
 import { detectMediaType } from "../utils/media";
 import { VideoSlide, ProgressiveImage } from "./MediaItems";
@@ -18,16 +17,23 @@ interface PhotoGalleryProps {
   photos: Photo[];
   initialYear?: number;
   onYearChange?: (year: number) => void;
+  navigationSource?: "timeline" | "keyboard" | null;
+  currentIndex: number;
+  setCurrentIndex: (index: number) => void;
+  currentPhoto?: Photo;
 }
 
-const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYearChange }) => {
-  // Get global photo navigation state
-  const { 
-    currentPhoto, 
-    currentIndex,
-    setCurrentIndex,
-    getPosition 
-  } = usePhotoNavigation({ photos });
+const PhotoGallery: React.FC<PhotoGalleryProps> = ({ 
+  photos, 
+  initialYear, 
+  onYearChange,
+  navigationSource,
+  currentIndex,
+  setCurrentIndex,
+  currentPhoto
+}) => {
+  // Reference to the gallery element
+  const galleryRef = useRef<HTMLDivElement>(null);
   
   // Preload images for smoother navigation
   const {
@@ -39,16 +45,55 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
   });
   
   // React to external year change (from Timeline) - only if initialYear is provided
+  // and not during keyboard navigation
   useEffect(() => {
-    if (initialYear && currentPhoto && initialYear !== currentPhoto.year) {
-      // Find the first photo of the requested year
-      const firstPhotoIndex = photos.findIndex(photo => photo.year === initialYear);
+    if (initialYear && currentPhoto && navigationSource === "timeline") {
+      // Extract year and month from the initialYear (which can be a decimal)
+      const targetYear = Math.floor(initialYear);
+      const targetMonth = Math.round((initialYear - targetYear) * 12) || 1;
       
-      if (firstPhotoIndex !== -1) {
-        setCurrentIndex(firstPhotoIndex);
+      // Calculate the decimal year value of current photo
+      const currentPhotoYearValue = currentPhoto.year + (currentPhoto.month - 1) / 12;
+      
+      // Only update if there's a significant difference (more than ~2 weeks)
+      if (Math.abs(initialYear - currentPhotoYearValue) > 0.04) {
+        // First try to find a photo with both matching year and closest month
+        const yearPhotos = photos.filter(photo => photo.year === targetYear);
+        
+        if (yearPhotos.length > 0) {
+          // Find the photo with the closest month
+          const closestPhoto = yearPhotos.reduce((closest, photo) => {
+            const currentDiff = Math.abs(photo.month - targetMonth);
+            const closestDiff = Math.abs(closest.month - targetMonth);
+            return currentDiff < closestDiff ? photo : closest;
+          });
+          
+          const photoIndex = photos.findIndex(p => p.id === closestPhoto.id);
+          if (photoIndex !== -1) {
+            setCurrentIndex(photoIndex);
+          }
+        } else {
+          // If no photos in that year, find closest year
+          const photoIndex = photos.findIndex(photo => photo.year === targetYear);
+          if (photoIndex !== -1) {
+            setCurrentIndex(photoIndex);
+          }
+        }
       }
     }
-  }, [initialYear, currentPhoto, photos, setCurrentIndex]);
+  }, [initialYear, currentPhoto, photos, setCurrentIndex, navigationSource]);
+  
+  // Ensure the gallery maintains focus after timeline navigation
+  useEffect(() => {
+    if (navigationSource === "timeline" && galleryRef.current) {
+      // Use a slight delay to ensure the focus occurs after the timeline interaction completes
+      setTimeout(() => {
+        if (galleryRef.current) {
+          galleryRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [navigationSource, currentIndex]);
   
   // Generate gallery items from photos
   const galleryItems = React.useMemo(() => {
@@ -95,8 +140,11 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
   // Handle slide changes
   const handleSlideChange = (newIndex: number) => {
     // Only report year changes if callback is provided
-    if (onYearChange && photos[newIndex] && photos[newIndex].year) {
-      onYearChange(photos[newIndex].year);
+    if (onYearChange && photos[newIndex]) {
+      const photo = photos[newIndex];
+      // Convert year and month to a decimal value (e.g. 2020.5 for June 2020)
+      const yearWithMonth = photo.year + (photo.month - 1) / 12;
+      onYearChange(yearWithMonth);
     }
     
     // Update current index
@@ -108,8 +156,11 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
     setCurrentIndex(index);
   };
   
-  // Get the position information for the indicator
-  const position = getPosition();
+  // Get the position for the indicator
+  const position = {
+    index: currentIndex,
+    total: photos.length
+  };
   
   // If there are no photos, show an empty state
   if (photos.length === 0) {
@@ -122,7 +173,7 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
   }
   
   return (
-    <GalleryContainer>
+    <GalleryContainer ref={galleryRef} tabIndex={-1}>
       {/* @ts-ignore - Bypassing type checking for ImageGallery component */}
       <ImageGallery
         items={galleryItems}
@@ -136,7 +187,7 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
         slideDuration={0}
         slideInterval={3000}
         lazyLoad={true}
-        disableKeyDown={true}
+        disableKeyDown={false} // Enable component's built-in keyboard handling
       />
       
       {/* Add our custom virtualized ThumbnailBar */}

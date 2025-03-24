@@ -157,7 +157,7 @@ const Timeline: React.FC<TimelineProps> = ({
         <StyledSlider
           min={minYear}
           max={maxYear}
-          step={1/12} // Step by months
+          step={1/12} // Step by months (1/12 of a year)
           value={displayValue}
           onChange={handleSliderValueChange}
           onAfterChange={handleSliderAfterChange}

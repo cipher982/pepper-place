@@ -7,6 +7,11 @@ export const GalleryContainer = styled.div`
   width: 100%;
   box-sizing: border-box; /* Important: include padding in width calculation */
   
+  /* Remove focus outline but maintain accessibility */
+  &:focus {
+    outline: none;
+  }
+  
   @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
     padding: ${({ theme }) => theme.spacing.md};
     margin: 20px auto 0;
