@@ -93,7 +93,10 @@ function App() {
     setCurrentYear(year);
     jumpToYear(year);
     // Reset the navigation source after a delay
-    setTimeout(() => setNavigationSource(null), 300);
+    setTimeout(() => {
+      console.log("Resetting navigationSource from", "timeline", "to null");
+      setNavigationSource(null);
+    }, 300);
   };
 
   // Get position information for indicator
