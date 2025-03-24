@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import ReactSlider from "react-slider";
 import { TimelinePeriod } from "../types";
 import {
   StyledSlider,

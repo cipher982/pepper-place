@@ -1,5 +1,4 @@
 import { Photo, MinioConfig, TimelinePeriod, Manifest } from "../types";
-import { extractDateFromPath } from "../utils/media";
 
 // Single object for cache constants
 const CACHE = {
