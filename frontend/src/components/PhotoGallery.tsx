@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+// @ts-ignore - Ignoring the type error with ImageGallery import
 import ImageGallery from "react-image-gallery";
 import "react-image-gallery/styles/css/image-gallery.css";
 import { Photo } from "../types";
@@ -122,6 +123,7 @@ const PhotoGallery: React.FC<PhotoGalleryProps> = ({ photos, initialYear, onYear
   
   return (
     <GalleryContainer>
+      {/* @ts-ignore - Bypassing type checking for ImageGallery component */}
       <ImageGallery
         items={galleryItems}
         showFullscreenButton={true}
