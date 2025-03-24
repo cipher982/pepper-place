@@ -111,7 +111,11 @@ function App() {
           totalPhotos={position.total}
         />
         
-        <PhotoGallery photos={photos} />
+        <PhotoGallery 
+          photos={photos} 
+          initialYear={currentYear}
+          onYearChange={handleYearChange}
+        />
         
         {/* Debug components - only shown in debug mode */}
         {isDebugMode && (
