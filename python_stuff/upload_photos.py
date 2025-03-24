@@ -53,13 +53,13 @@ SKIP_FILES = (".ds_store", "thumbs.db")
 # Format conversion settings
 CONVERT_HEIC = True  # Convert HEIC to JPEG
 WEB_IMAGE_FORMAT = "WEBP"  # Target format for web images
-WEB_IMAGE_QUALITY = 85  # Quality for web images
+WEB_IMAGE_QUALITY = 75  # Quality for web images (reduced from 85)
 SKIP_VIDEO_THUMBNAILS = False  # Skip video thumbnail creation
 
 # Image optimization settings
-MAIN_IMAGE_SIZE = (1920, 1080)  # 2x Retina resolution
+MAIN_IMAGE_SIZE = (1600, 900)  # Reduced from 1920x1080 for smaller file size
 MAIN_IMAGE_FORMAT = "WEBP"  # Modern format for better compression
-MAIN_IMAGE_QUALITY = 85  # High quality for main images
+MAIN_IMAGE_QUALITY = 75  # Reduced quality for better compression (was 85)
 
 # Maximum file size and duration limits
 MAX_VIDEO_SIZE_MB = 10  # Maximum video size in MB
@@ -231,9 +231,12 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
     result["file_size"] = file_size
 
     try:
-        # Get year and month from metadata
+        # Get full datetime from metadata
         try:
-            year, month = get_exif_date(file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS)
+            date_obj = get_exif_date(file_path, VIDEO_EXTENSIONS, IMAGE_EXTENSIONS)
+            year, month = date_obj.year, date_obj.month
+            # Also store full timestamp for later use
+            timestamp = date_obj.isoformat()
         except Exception as e:
             result["error"] = f"Error getting date: {e}"
             return result
@@ -339,6 +342,12 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
             result["error"] = "Thumbnail creation failed"
             return result
 
+        # Add timestamp to the result for manifest generation later
+        result["timestamp"] = timestamp
+        result["media_key"] = media_key
+        result["year"] = year
+        result["month"] = month
+        
         result["success"] = True
         return result
 
@@ -351,12 +360,35 @@ def generate_manifest(minio_client):
     """
     Generate a manifest.json file containing metadata for all photos in the bucket.
     The manifest includes:
-    - List of all photos with metadata (id, path, year, month, filename)
+    - List of all photos with metadata (id, path, year, month, filename, timestamp)
     - Timeline data with photo counts by year
     """
     print("Generating manifest file...")
 
     try:
+        # First check if metadata.json exists to get detailed timestamps
+        metadata = {"files": {}}
+        try:
+            metadata_exists = False
+            try:
+                minio_client.stat_object(BUCKET_NAME, "metadata.json")
+                metadata_exists = True
+            except Exception:
+                pass
+                
+            if metadata_exists:
+                # Get existing metadata
+                temp_file = tempfile.NamedTemporaryFile(delete=False)
+                minio_client.fget_object(BUCKET_NAME, "metadata.json", temp_file.name)
+                with open(temp_file.name, 'r') as f:
+                    metadata = json.load(f)
+                # Clean up temporary file
+                os.unlink(temp_file.name)
+                print(f"Loaded detailed metadata for {len(metadata.get('files', {}))} files")
+        except Exception as e:
+            print(f"Warning: Failed to load detailed metadata: {e}")
+            metadata = {"files": {}}
+        
         # List all objects in the media directory
         photos = []
         objects = minio_client.list_objects(
@@ -372,6 +404,15 @@ def generate_manifest(minio_client):
                     year = int(path_parts[1])
                     month = int(path_parts[2])
                     filename = path_parts[3]
+                    
+                    # Try to get timestamp from metadata file first
+                    timestamp = None
+                    if obj.object_name in metadata.get("files", {}):
+                        timestamp = metadata["files"][obj.object_name].get("timestamp")
+                    
+                    # Fallback to last_modified if no metadata timestamp
+                    if not timestamp and hasattr(obj, "last_modified"):
+                        timestamp = obj.last_modified.isoformat()
 
                     # Create photo entry
                     photo = {
@@ -381,6 +422,7 @@ def generate_manifest(minio_client):
                         "month": month,
                         "filename": filename,
                         "size": obj.size,
+                        "timestamp": timestamp,
                         "last_modified": obj.last_modified.isoformat()
                         if hasattr(obj, "last_modified")
                         else None,
@@ -390,8 +432,13 @@ def generate_manifest(minio_client):
                 except (ValueError, IndexError) as e:
                     print(f"Error parsing path {obj.object_name}: {e}")
 
-        # Sort photos by year and month (oldest first)
-        photos.sort(key=lambda p: (p["year"], p["month"]), reverse=False)
+        # Sort photos by timestamp if available, then year/month (oldest first)
+        photos.sort(key=lambda p: (
+            p["timestamp"] if p["timestamp"] else f"{p['year']}-{p['month']:02d}-01T00:00:00",
+            p["year"], 
+            p["month"],
+            p["filename"]  # Finally sort by filename for consistent ordering
+        ))
 
         # Generate timeline data (photo counts by year)
         year_counts = {}
@@ -545,8 +592,58 @@ def upload_photos(photos_dir: str, dry_run=False, dedupe=False, threshold=5, ski
 
     # Generate and upload the manifest file
     if not dry_run and success_count > 0:
+        # Store detailed metadata for uploaded files to allow proper sorting
+        if any(r.get("timestamp") for r in results if r.get("success", False)):
+            # To store metadata about processed files - create or update metadata files
+            try:
+                # First check if metadata.json exists
+                metadata_exists = False
+                try:
+                    minio_client.stat_object(BUCKET_NAME, "metadata.json")
+                    metadata_exists = True
+                except Exception:
+                    pass
+                
+                if metadata_exists:
+                    # Get existing metadata
+                    temp_file = tempfile.NamedTemporaryFile(delete=False)
+                    minio_client.fget_object(BUCKET_NAME, "metadata.json", temp_file.name)
+                    with open(temp_file.name, 'r') as f:
+                        metadata = json.load(f)
+                else:
+                    metadata = {"files": {}}
+                
+                # Add metadata from successful uploads
+                for result in results:
+                    if result.get("success") and result.get("media_key") and result.get("timestamp"):
+                        metadata["files"][result["media_key"]] = {
+                            "timestamp": result["timestamp"],
+                            "year": result["year"],
+                            "month": result["month"]
+                        }
+                
+                # Write updated metadata back
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as temp_file:
+                    json.dump(metadata, temp_file, indent=2)
+                    metadata_file_path = temp_file.name
+                
+                # Upload metadata
+                minio_client.fput_object(
+                    BUCKET_NAME,
+                    "metadata.json",
+                    metadata_file_path,
+                    content_type="application/json"
+                )
+                
+                # Clean up temporary file
+                os.unlink(metadata_file_path)
+                
+                print("✓ Detailed metadata saved")
+            except Exception as e:
+                print(f"Warning: Failed to store detailed metadata: {e}")
+                
+        # Generate the manifest
         generate_manifest(get_minio_client())
-
 
 
 def filter_duplicates(image_files: List[str], threshold: int = 5, skip_invalid: bool = True) -> List[str]:
@@ -750,7 +847,7 @@ def create_main_image(file_path):
             # Handle transparency
             image.save(main_buffer, format=MAIN_IMAGE_FORMAT, lossless=True)
         else:
-            image.save(main_buffer, format=MAIN_IMAGE_FORMAT, quality=MAIN_IMAGE_QUALITY)
+            image.save(main_buffer, format=MAIN_IMAGE_FORMAT, quality=MAIN_IMAGE_QUALITY, method=6)
         
         main_buffer.seek(0)
         return main_buffer

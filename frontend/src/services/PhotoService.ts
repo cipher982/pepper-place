@@ -193,6 +193,7 @@ class PhotoService {
         thumbnailUrl: this.getThumbnailUrl(photo.path),
         year: photo.year,
         month: photo.month,
+        timestamp: photo.timestamp,
         tags: []
       }));
     } catch (error) {

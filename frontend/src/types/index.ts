@@ -4,6 +4,7 @@ export interface Photo {
   thumbnailUrl: string;
   year: number;
   month: number;
+  timestamp?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -26,6 +27,7 @@ export interface ManifestPhoto {
   month: number;
   filename: string;
   size?: number;
+  timestamp?: string;
   last_modified?: string;
 }
 

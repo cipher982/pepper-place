@@ -14,8 +14,11 @@ from typing import Tuple, Optional, List
 
 def get_exif_date(
     file_path: str, video_extensions: List[str], image_extensions: List[str]
-) -> Tuple[int, int]:
-    """Extract date from media metadata or use file modification date as fallback"""
+) -> datetime:
+    """Extract date from media metadata or use file modification date as fallback
+    
+    Returns the full datetime object instead of just year/month tuple
+    """
     file_lower = file_path.lower()
 
     # For videos, use ffprobe to extract creation date
@@ -47,7 +50,7 @@ def get_exif_date(
                     date_obj = datetime.fromisoformat(
                         creation_time.replace("Z", "+00:00")
                     )
-                    return date_obj.year, date_obj.month
+                    return date_obj
 
             # Fallback to exiftool for video metadata
             return extract_date_with_exiftool(file_path)
@@ -74,17 +77,17 @@ def get_exif_date(
                     if tag == "DateTimeOriginal":
                         # Parse EXIF date format: "YYYY:MM:DD HH:MM:SS"
                         date_obj = datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
-                        return date_obj.year, date_obj.month
+                        return date_obj
         except Exception as e:
             print(f"Error reading EXIF from {file_path}: {e}")
 
     # Ultimate fallback: use file modification date
     mod_time = os.path.getmtime(file_path)
     date_obj = datetime.fromtimestamp(mod_time)
-    return date_obj.year, date_obj.month
+    return date_obj
 
 
-def extract_date_with_exiftool(file_path: str) -> Tuple[int, int]:
+def extract_date_with_exiftool(file_path: str) -> datetime:
     """Extract creation date using exiftool as a fallback method"""
     try:
         # Common date tags to try in order of preference
@@ -113,18 +116,24 @@ def extract_date_with_exiftool(file_path: str) -> Tuple[int, int]:
                         date_str = metadata[0][tag]
                         # Handle various date formats
                         if ":" in date_str:
-                            # Format: "YYYY:MM:DD HH:MM:SS"
-                            match = re.search(r"(\d{4}):(\d{2}):\d{2}", date_str)
-                            if match:
-                                year, month = int(match.group(1)), int(match.group(2))
-                                return year, month
+                            # Try common formats
+                            try:
+                                # Format: "YYYY:MM:DD HH:MM:SS"
+                                return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                            except ValueError:
+                                # Try alternate format: "YYYY:MM:DD"
+                                match = re.search(r"(\d{4}):(\d{2}):(\d{2})", date_str)
+                                if match:
+                                    year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                                    # Set time to midnight if no time info
+                                    return datetime(year, month, day, 0, 0, 0)
     except Exception as e:
         print(f"Error extracting date with exiftool: {e}")
 
     # If exiftool fails, use file modification time
     mod_time = os.path.getmtime(file_path)
     date_obj = datetime.fromtimestamp(mod_time)
-    return date_obj.year, date_obj.month
+    return date_obj
 
 
 def convert_heic_to_jpeg(
@@ -377,12 +386,16 @@ def get_video_metadata(video_path: str) -> Tuple[Optional[float], Optional[float
 def optimize_video(video_path: str) -> Optional[io.BytesIO]:
     """
     Optimize video using FFmpeg with the following settings:
-    - Resolution: 1920x1080 max (preserving aspect ratio)
-    - Codec: H.265/HEVC
-    - Framerate: 30fps max (preserving original if lower)
-    - Audio: AAC @ 128k
+    - Resolution: 854x480 (preserving aspect ratio)
+    - Codec: H.265/HEVC using Apple Silicon hardware acceleration
+    - Framerate: 15fps max (preserving original if lower)
+    - Compression: Quality 35 (high compression)
+    - Audio: AAC @ 64k
     - Metadata: Preserved
     - Container: MP4 with faststart
+    
+    Optimized for short clips (2-3 seconds) that users will quickly scroll through.
+    Prioritizes fast loading over quality and uses hardware acceleration on Apple Silicon.
     
     Args:
         video_path: Path to the input video file
@@ -398,12 +411,12 @@ def optimize_video(video_path: str) -> Optional[io.BytesIO]:
                 "-y",  # Overwrite output file if exists
                 "-i", video_path,  # Input file
                 # Video settings
-                "-vf", "scale=w=min(iw\\,1920):h=min(ih\\,1080):force_original_aspect_ratio=decrease,fps=min(30\\,source_fps)",  # Scale and FPS
-                "-c:v", "hevc",  # H.265/HEVC codec
-                "-crf", "28",  # Quality setting (23-28 is good for HEVC)
+                "-vf", "scale=w=min(iw\\,854):h=min(ih\\,480):force_original_aspect_ratio=decrease,fps=min(15\\,source_fps)",  # Scale and FPS
+                "-c:v", "hevc_videotoolbox",  # Use Apple Silicon hardware encoder
+                "-q:v", "35",  # Quality setting for hardware encoder
                 # Audio settings
                 "-c:a", "aac",
-                "-b:a", "128k",
+                "-b:a", "64k",  # Lower audio bitrate
                 # Container settings
                 "-movflags", "+faststart",  # Enable fast start for web playback
                 "-map_metadata", "0",  # Preserve metadata
@@ -420,8 +433,37 @@ def optimize_video(video_path: str) -> Optional[io.BytesIO]:
             )
             
             if process.returncode != 0:
-                print(f"FFmpeg error optimizing video {os.path.basename(video_path)}: {process.stderr[:200]}...")
-                return None
+                # Fall back to software encoding if hardware fails
+                print(f"Hardware encoding failed, falling back to software encoding: {process.stderr[:200]}...")
+                cmd = [
+                    "ffmpeg",
+                    "-y",  # Overwrite output file if exists
+                    "-i", video_path,  # Input file
+                    # Video settings
+                    "-vf", "scale=w=min(iw\\,854):h=min(ih\\,480):force_original_aspect_ratio=decrease,fps=min(15\\,source_fps)",
+                    "-c:v", "hevc",  # Use software encoder as fallback
+                    "-crf", "35",  # Compression setting
+                    "-preset", "medium",  # Balance between compression and speed
+                    # Audio settings
+                    "-c:a", "aac",
+                    "-b:a", "64k",
+                    # Container settings
+                    "-movflags", "+faststart",
+                    "-map_metadata", "0",
+                    temp_mp4.name
+                ]
+                
+                process = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=300
+                )
+                
+                if process.returncode != 0:
+                    print(f"FFmpeg error optimizing video {os.path.basename(video_path)}: {process.stderr[:200]}...")
+                    return None
             
             # Check if output was created
             if not os.path.exists(temp_mp4.name) or os.path.getsize(temp_mp4.name) == 0:
