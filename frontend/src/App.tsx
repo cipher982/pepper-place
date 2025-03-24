@@ -48,7 +48,6 @@ function App() {
     currentIndex,
     jumpToYear,
     getPosition,
-    setKeyboardNavigationActive,
     setCurrentIndex
   } = usePhotoNavigation({ 
     photos,
