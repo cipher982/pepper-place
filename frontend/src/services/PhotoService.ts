@@ -40,15 +40,14 @@ class PhotoService {
       console.log("Development mode: cleared existing cache");
     }
     
-    // Ensure endpoint has protocol (match the current page protocol)
+    // Process the endpoint (always force HTTP for this Minio server)
     let endpoint = config.endpoint;
-    if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
-      // Detect the current page protocol (or default to http)
-      const protocol = (typeof window !== "undefined" && window.location.protocol === "https:") 
-        ? "https" 
-        : "http";
-      endpoint = `${protocol}://${endpoint}`;
+    // Strip any existing protocol
+    if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
+      endpoint = endpoint.replace(/^https?:\/\//, "");
     }
+    // Always use HTTP since this Minio server doesn't support HTTPS
+    endpoint = `http://${endpoint}`;
     
     // Build base URL for direct access (without authentication)
     this.baseUrl = endpoint.endsWith("/") 
