@@ -37,6 +37,8 @@ export default function useImagePreloader({
   const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
   // Track loading status for each URL
   const loadingStatus = useRef<Map<string, boolean>>(new Map());
+  // Track AbortControllers for cancellable requests
+  const abortControllers = useRef<Map<string, () => void>>(new Map());
 
   // Preload a single image and store it in cache
   const preloadImage = useCallback((url: string, isThumbnail = false) => {
@@ -50,18 +52,42 @@ export default function useImagePreloader({
       return;
     }
 
+    // Cancel any existing request for this URL
+    const existingCancel = abortControllers.current.get(url);
+    if (existingCancel) {
+      existingCancel();
+    }
+
     // Mark as loading
     loadingStatus.current.set(url, true);
 
     const img = new Image();
-    img.onload = () => {
-      imageCache.current.set(url, img);
+    let cancelled = false;
+
+    // Store cancel function
+    const cancelFn = () => {
+      cancelled = true;
+      img.src = ''; // Stop loading
       loadingStatus.current.set(url, false);
+      abortControllers.current.delete(url);
+    };
+    abortControllers.current.set(url, cancelFn);
+
+    img.onload = () => {
+      if (!cancelled) {
+        imageCache.current.set(url, img);
+        loadingStatus.current.set(url, false);
+        abortControllers.current.delete(url);
+      }
     };
     img.onerror = () => {
-      loadingStatus.current.set(url, false);
-      console.error(`Failed to preload image: ${url}`);
+      if (!cancelled) {
+        loadingStatus.current.set(url, false);
+        abortControllers.current.delete(url);
+        console.error(`Failed to preload image: ${url}`);
+      }
     };
+
     img.src = url;
   }, []);
 
@@ -118,10 +144,28 @@ export default function useImagePreloader({
 
     // Get indexes for full images (smaller buffer)
     const imageIndexes = getPreloadIndexes(navigationDirection, bufferSize);
-    
+
     // Get indexes for thumbnails (larger buffer)
     const thumbnailIndexes = getPreloadIndexes(navigationDirection, THUMBNAIL_BUFFER_SIZE);
-    
+
+    // Build set of URLs we want to load
+    const urlsToLoad = new Set<string>();
+    imageIndexes.forEach(index => {
+      const photo = photos[index];
+      if (photo) urlsToLoad.add(photo.url);
+    });
+    thumbnailIndexes.forEach(index => {
+      const photo = photos[index];
+      if (photo) urlsToLoad.add(photo.thumbnailUrl);
+    });
+
+    // Cancel any requests that are no longer needed
+    abortControllers.current.forEach((cancelFn, url) => {
+      if (!urlsToLoad.has(url)) {
+        cancelFn();
+      }
+    });
+
     // Preload main images
     imageIndexes.forEach(index => {
       const photo = photos[index];
@@ -129,7 +173,7 @@ export default function useImagePreloader({
         preloadImage(photo.url);
       }
     });
-    
+
     // Preload thumbnail images (only those that will be visible in the ThumbnailBar)
     thumbnailIndexes.forEach(index => {
       const photo = photos[index];
@@ -138,6 +182,14 @@ export default function useImagePreloader({
       }
     });
   }, [photos, currentIndex, navigationDirection, bufferSize, getPreloadIndexes, preloadImage]);
+
+  // Cleanup all pending requests on unmount
+  useEffect(() => {
+    return () => {
+      abortControllers.current.forEach(cancelFn => cancelFn());
+      abortControllers.current.clear();
+    };
+  }, []);
 
   return {
     isImageCached,
