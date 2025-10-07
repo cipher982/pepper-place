@@ -169,6 +169,8 @@ export const ProgressiveImage = ({
       src={currentSrc}
       alt={alt}
       $loaded={loaded}
+      loading="lazy"
+      decoding="async"
     />
   );
 }; 

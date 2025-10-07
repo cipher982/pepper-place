@@ -70,6 +70,7 @@ const ThumbnailItem: React.FC<{
         onClick={handleClick}
         $isActive={isActive}
         loading="eager"
+        decoding="async"
       />
     </div>
   );
