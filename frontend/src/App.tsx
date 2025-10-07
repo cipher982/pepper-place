@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import Timeline from "./components/Timeline";
 import PhotoGallery from "./components/PhotoGallery";
-import DebugPanel from "./components/DebugPanel";
-import SortDebugger from "./components/SortDebugger";
-import MetadataChecker from "./components/MetadataChecker";
-import YearJumpDebugger from "./components/YearJumpDebugger";
 import usePhotoData from "./hooks/usePhotoData";
 import usePhotoNavigation from "./hooks/usePhotoNavigation";
+
+// Lazy load debug components (only loaded when ?debug=true)
+const DebugPanel = lazy(() => import("./components/DebugPanel"));
+const SortDebugger = lazy(() => import("./components/SortDebugger"));
+const MetadataChecker = lazy(() => import("./components/MetadataChecker"));
+const YearJumpDebugger = lazy(() => import("./components/YearJumpDebugger"));
 import { 
   AppContainer, 
   Header, 
@@ -133,8 +135,8 @@ function App() {
         
         {/* Debug components - only shown in debug mode */}
         {isDebugMode && (
-          <>
-            <DebugPanel 
+          <Suspense fallback={<div style={{ padding: '1rem', textAlign: 'center' }}>Loading debug tools...</div>}>
+            <DebugPanel
               photos={photos}
               timeline={timeline}
               currentPhoto={currentPhoto}
@@ -148,7 +150,7 @@ function App() {
               currentYear={currentYear}
               onYearChange={handleYearChange}
             />
-          </>
+          </Suspense>
         )}
       </TimelineGalleryContainer>
     );

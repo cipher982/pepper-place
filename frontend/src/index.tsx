@@ -1,5 +1,4 @@
 import React from "react";
-import ReactDOM from "react-dom/client";
 import { hydrateRoot, createRoot } from "react-dom/client";
 import { ThemeProvider, DefaultTheme } from "styled-components";
 import App from "./App";
