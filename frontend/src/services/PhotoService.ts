@@ -119,18 +119,10 @@ class PhotoService {
   private async fetchManifest(): Promise<Manifest> {
     try {
       const manifestUrl = `${this.baseUrl}/${PATHS.MANIFEST_PATH}`;
-      
-      // Set no-cache headers to avoid browser caching issues
-      const options = {
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0"
-        }
-      };
-      
-      // Fetch the manifest
-      const response = await fetch(manifestUrl, options);
+
+      // Let browser handle HTTP caching (ETag, 304 responses)
+      // Server should send appropriate Cache-Control headers
+      const response = await fetch(manifestUrl);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch manifest: ${response.status} ${response.statusText}`);
