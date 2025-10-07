@@ -42,14 +42,11 @@ class PhotoService {
     
     // Process endpoint and ensure it has a protocol
     let endpoint = config.endpoint;
-    
+
     // If endpoint doesn't have a protocol, add the appropriate one
     if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
-      // Match the current page protocol (or default to http for development)
-      const protocol = (typeof window !== "undefined" && window.location.protocol === "https:") 
-        ? "https" 
-        : "http";
-      endpoint = `${protocol}://${endpoint}`;
+      // Always use HTTPS for MinIO (required for CORS to work)
+      endpoint = `https://${endpoint}`;
     }
     
     // Build base URL for direct access (without authentication)
