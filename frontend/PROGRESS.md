@@ -147,9 +147,11 @@
 ### SEO
 - **Structured data**: ImageGallery schema ✅
 - **Meta tags**: Open Graph + Twitter Cards ✅
-- **Sitemap**: Auto-generated ✅
-- **Pre-rendering**: Static HTML with content ✅
+- **Sitemap**: Basic (single URL) ✅
+- **Pre-rendering**: ❌ Disabled (CORS blocks manifest during build)
 - **Robots.txt**: Updated with sitemap reference ✅
+- **Social images**: ⚠️ Commented out (assets don't exist yet)
+- **Overall**: ~50% of full SEO potential
 
 ### Security
 - **Vulnerabilities**: 15 → 9 (critical fixed)
@@ -170,7 +172,7 @@
 | Preload buffer | 200 images | 20 images | ↓ 90% |
 | Critical vulnerabilities | 1 | 0 | ✅ Fixed |
 | Total vulnerabilities | 15 | 9 | ↓ 40% |
-| SEO crawlability | 0% | 100% | ✅ Fixed |
+| SEO crawlability | 0% | ~50% | ⚠️ Partial (meta tags work, pre-rendering disabled) |
 | Meta tags | 3 basic | 20+ comprehensive | ✅ Fixed |
 | Structured data | None | ImageGallery schema | ✅ Added |
 | Sitemap | None | Auto-generated | ✅ Added |

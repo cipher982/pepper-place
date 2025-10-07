@@ -37,29 +37,34 @@ This refactor addressed **all critical issues** identified across three independ
 - **After**: IntersectionObserver + permission check
 - **Impact**: Plays only when visible, respects browser policies
 
-### 🔍 SEO Transformation
+### 🔍 SEO Improvements (Partial)
 
-**Structured Data (Schema.org)**
+**Structured Data (Schema.org)** ✅
 - Added ImageGallery JSON-LD schema
 - Enables rich snippets in search results
 - May appear in Google Images with metadata
 
-**Meta Tags Enhanced**
+**Meta Tags Enhanced** ✅
 - Added 20+ Open Graph tags for Facebook/LinkedIn
 - Added Twitter Card tags for Twitter embeds
 - Enhanced description with dog-specific keywords
 
-**Sitemap.xml**
-- Auto-generated from manifest (or basic fallback)
+**Sitemap.xml** ✅
+- Basic sitemap generated (single root URL)
 - Runs before every build
 - Referenced in robots.txt
+- ⚠️ Can't include photo URLs (manifest not accessible during build)
 
-**Pre-rendering (react-snap)**
-- **THE CRITICAL FIX**: Search bots now see fully-rendered HTML
-- Static HTML generated with all meta tags and structure
-- Content visible before JavaScript loads
+**Pre-rendering (react-snap)** ❌
+- **DISABLED**: CORS blocks manifest fetch during headless crawl
+- Would render error page instead of gallery content
+- Search bots see SPA with meta tags, not pre-rendered HTML
+- **TODO**: Enable after fixing MinIO CORS or using mock manifest
 
-**Result**: Site transformed from **invisible** to **discoverable**
+**Result**: Site transformed from **completely invisible** to **partially discoverable**
+- Meta tags help SEO even without pre-rendering
+- Structured data readable by bots
+- Estimated 50% of full SEO potential
 
 ### 🛡️ Security & Robustness
 
@@ -99,7 +104,7 @@ Code splitting: 4 new chunks for debug tools
 - **Video playback**: Intersection-based (saves bandwidth)
 
 ### SEO Improvements
-- **Crawlability**: 0% → 100%
+- **Crawlability**: 0% → ~50% (meta tags + structured data, no pre-rendering)
 - **Meta tags**: 3 → 20+
 - **Structured data**: Added ImageGallery schema
 - **Sitemap**: Auto-generated
