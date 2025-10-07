@@ -185,10 +185,13 @@ export default function useImagePreloader({
 
   // Cleanup all pending requests on unmount
   useEffect(() => {
+    // Capture ref value for cleanup
+    const controllers = abortControllers.current;
     return () => {
-      abortControllers.current.forEach(cancelFn => cancelFn());
-      abortControllers.current.clear();
+      controllers.forEach(cancelFn => cancelFn());
+      controllers.clear();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {
