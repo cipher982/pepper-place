@@ -4,12 +4,19 @@ const path = require('path');
 /**
  * Generates sitemap.xml from manifest.json
  *
+ * NOTE: The manifest.json in public/ is a PWA manifest (app metadata),
+ * NOT the photo gallery manifest from MinIO. This script currently generates
+ * a basic sitemap with just the root URL until we can:
+ *   a) Fetch the real manifest from MinIO (requires CORS config)
+ *   b) Cache a copy of the manifest locally during build
+ *   c) Generate the sitemap server-side
+ *
  * Usage:
  *   node generate-sitemap.js [manifest-path] [base-url]
  *
  * Defaults:
- *   manifest-path: ./public/manifest.json
- *   base-url: https://pepperplace.com
+ *   manifest-path: ./public/manifest.json (PWA manifest, not photo manifest)
+ *   base-url: https://pepperplace.com (TODO: Update to real domain)
  */
 
 const manifestPath = process.argv[2] || './public/manifest.json';
@@ -17,10 +24,11 @@ const baseUrl = process.argv[3] || process.env.PUBLIC_URL || 'https://pepperplac
 const outputPath = './public/sitemap.xml';
 
 function generateSitemap() {
+  console.log('⚠️  Note: Generating basic sitemap (photo manifest not accessible during build)');
+
   // Check if manifest exists
   if (!fs.existsSync(manifestPath)) {
     console.warn(`⚠️  Manifest not found at ${manifestPath}`);
-    console.log('Creating basic sitemap without photo data...');
 
     const basicSitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -49,17 +57,18 @@ function generateSitemap() {
       }
     ];
 
-    // If manifest has timeline data, add year pages
-    if (manifest.timeline && Array.isArray(manifest.timeline)) {
-      manifest.timeline.forEach(period => {
-        urls.push({
-          loc: `${baseUrl}/#year-${period.year}`,
-          changefreq: 'monthly',
-          priority: 0.8,
-          lastmod: new Date().toISOString().split('T')[0]
-        });
-      });
-    }
+    // The PWA manifest doesn't have timeline data
+    // This section is for future enhancement when we can access the photo manifest
+    // if (manifest.timeline && Array.isArray(manifest.timeline)) {
+    //   manifest.timeline.forEach(period => {
+    //     urls.push({
+    //       loc: `${baseUrl}/#year-${period.year}`,
+    //       changefreq: 'monthly',
+    //       priority: 0.8,
+    //       lastmod: new Date().toISOString().split('T')[0]
+    //     });
+    //   });
+    // }
 
     // Generate XML
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
