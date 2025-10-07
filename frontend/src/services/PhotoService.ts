@@ -234,7 +234,7 @@ class PhotoService {
     }
     
     // Fallback to an inline SVG placeholder (avoids 404 requests)
-    return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect fill='%23e0e0e0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='10' fill='%23999' text-anchor='middle' dominant-baseline='central'%3ENo thumbnail%3C/text%3E%3C/svg%3E";
+    return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' fill='%23e0e0e0'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='10' fill='%23999' text-anchor='middle' dominant-baseline='central'%3ENo thumbnail%3C/text%3E%3C/svg%3E";
   }
 }
 
