@@ -37,6 +37,14 @@ This repo contains the code for an interactive timeline of Pepper the dog’s ph
 • Video playback issues often relate to the browser’s supported formats. The code attempts to auto-play and loop certain video types (e.g., MP4).  
 • If you need to alter the thumbnail creation (e.g., different poster frame for videos), edit the create_video_thumbnail function in upload_photos.py.  
 
+## Current Frontend Status (October 2025)
+
+• Pre-rendered static HTML is generated during `npm run build` via react-snap, so crawlers receive fully rendered markup.  
+• Image loading uses lazy/async decoding with a capped preload buffer (20 items) and request cancellation to avoid network thrash.  
+• MinIO access is expected over HTTPS in production; for local testing you can still point `REACT_APP_S3_ENDPOINT` at `http://localhost:9000` (update the code if you need mixed protocols).  
+• Basic SEO metadata (canonical URL, Open Graph/Twitter tags, ImageGallery JSON-LD) is baked into `public/index.html`.  
+• A small utility script generates `public/sitemap.xml` during the build; if you need richer entries, extend `scripts/generate-sitemap.js`.  
+
 ## Next Steps & Ideas
 
 • Tagging and searching photos directly in the UI.  
