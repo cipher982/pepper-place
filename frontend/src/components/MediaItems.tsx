@@ -26,11 +26,13 @@ const getVideoMimeType = (url: string): string => {
 export const VideoSlide = ({ url, description }: { url: string; description?: string }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  
+  const [canAutoplay, setCanAutoplay] = useState(true);
+  const [isInView, setIsInView] = useState(false);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    
+
     const handleError = (e: Event) => {
       console.error("Video error:", e);
       if (video.error) {
@@ -48,34 +50,50 @@ export const VideoSlide = ({ url, description }: { url: string; description?: st
             break;
           case 4:
             console.error(
-              "Video format not supported by browser. URL:", url, 
+              "Video format not supported by browser. URL:", url,
               "Format appears to be:", getVideoMimeType(url)
             );
             break;
         }
       }
     };
-    
-    const handleLoaded = () => setIsPlaying(true);
+
+    const handleLoaded = () => setIsPlaying(video.paused === false);
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
-    
+
     // Add event listeners
     video.addEventListener("error", handleError);
     video.addEventListener("loadeddata", handleLoaded);
     video.addEventListener("play", handlePlay);
     video.addEventListener("pause", handlePause);
-    
-    // Force play when component mounts
-    video.play().catch(e => {
-      console.error("Error playing video:", e);
-      // Retry once after a delay
-      setTimeout(() => video.play().catch(e2 => 
-        console.error("Retry play failed:", e2)), 1000);
-    });
-    
-    // Clean up event listeners
+
+    // Check if autoplay is allowed (test once, no retry loop)
+    video.play()
+      .then(() => {
+        setCanAutoplay(true);
+        video.pause(); // Pause immediately, will play when in view
+      })
+      .catch(() => {
+        setCanAutoplay(false);
+        console.log("Autoplay blocked by browser - user must click play");
+      });
+
+    // Set up IntersectionObserver to play only when visible
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          setIsInView(entry.isIntersecting);
+        });
+      },
+      { threshold: 0.5 } // Play when 50% visible
+    );
+
+    observer.observe(video);
+
+    // Clean up
     return () => {
+      observer.disconnect();
       if (video) {
         video.pause();
         video.removeEventListener("error", handleError);
@@ -85,6 +103,20 @@ export const VideoSlide = ({ url, description }: { url: string; description?: st
       }
     };
   }, [url]);
+
+  // Handle auto-playback based on visibility and autoplay permission
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isInView && canAutoplay) {
+      video.play().catch(() => {
+        // Autoplay blocked, do nothing (user can click play button)
+      });
+    } else if (!isInView) {
+      video.pause();
+    }
+  }, [isInView, canAutoplay]);
 
   const togglePlayPause = useCallback(() => {
     const video = videoRef.current;
@@ -101,11 +133,11 @@ export const VideoSlide = ({ url, description }: { url: string; description?: st
     <MediaContainer>
       <VideoElement
         ref={videoRef}
-        autoPlay
         loop
         muted
         playsInline
         controls={false}
+        preload="metadata"
         $isPlaying={isPlaying}
         onClick={togglePlayPause}
       >
