@@ -2,4 +2,4 @@
 User-agent: *
 Disallow:
 
-Sitemap: https://REPLACE-WITH-YOUR-DOMAIN.com/sitemap.xml
+Sitemap: https://pepper.drose.io/sitemap.xml

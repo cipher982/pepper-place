@@ -20,7 +20,7 @@ const path = require('path');
  */
 
 const manifestPath = process.argv[2] || './public/manifest.json';
-const baseUrl = process.argv[3] || process.env.PUBLIC_URL || 'https://REPLACE-WITH-YOUR-DOMAIN.com';
+const baseUrl = process.argv[3] || process.env.PUBLIC_URL || 'https://pepper.drose.io';
 const outputPath = './public/sitemap.xml';
 
 function generateSitemap() {
