@@ -28,16 +28,14 @@ const isDebugMode = (() => {
 })();
 
 function App() {
-  // Use config from environment variables
-  const minioConfig = useMemo(() => {
-    if (!process.env.REACT_APP_S3_ENDPOINT || !process.env.REACT_APP_S3_BUCKET) {
-      throw new Error("Missing required environment variables: REACT_APP_S3_ENDPOINT and REACT_APP_S3_BUCKET must be set");
-    }
-    return {
-      endpoint: process.env.REACT_APP_S3_ENDPOINT,
-      bucket: process.env.REACT_APP_S3_BUCKET,
-    };
-  }, []);
+  // Check for configuration errors
+  const configError = !process.env.REACT_APP_S3_ENDPOINT || !process.env.REACT_APP_S3_BUCKET;
+
+  // Use config from environment variables (with fallback to prevent undefined)
+  const minioConfig = useMemo(() => ({
+    endpoint: process.env.REACT_APP_S3_ENDPOINT || '',
+    bucket: process.env.REACT_APP_S3_BUCKET || '',
+  }), []);
   
   const { photos, timeline, loading, error } = usePhotoData(minioConfig);
   
@@ -105,10 +103,30 @@ function App() {
 
   // Render app content based on loading/error state
   const renderContent = () => {
+    // Show configuration error if env vars missing
+    if (configError) {
+      return (
+        <ErrorState>
+          <h2>Configuration Error</h2>
+          <p>The gallery is not properly configured. Please check environment variables:</p>
+          <ul style={{ textAlign: 'left', display: 'inline-block', marginTop: '1rem' }}>
+            <li>
+              <strong>REACT_APP_S3_ENDPOINT:</strong>{' '}
+              {process.env.REACT_APP_S3_ENDPOINT || <span style={{ color: '#d32f2f' }}>missing</span>}
+            </li>
+            <li>
+              <strong>REACT_APP_S3_BUCKET:</strong>{' '}
+              {process.env.REACT_APP_S3_BUCKET || <span style={{ color: '#d32f2f' }}>missing</span>}
+            </li>
+          </ul>
+        </ErrorState>
+      );
+    }
+
     if (loading) {
       return <LoadingState>Loading Pepper's photos...</LoadingState>;
     }
-    
+
     if (error) {
       return <ErrorState>{error}</ErrorState>;
     }
