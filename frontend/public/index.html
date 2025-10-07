@@ -20,6 +20,34 @@
       user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
     -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- Structured Data for SEO -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "ImageGallery",
+      "name": "Pepper Through the Years",
+      "description": "A chronological photo gallery documenting Pepper's journey from puppy to adult dog, spanning 2014-2024 with over 1000 photos and videos",
+      "url": "https://pepperplace.com",
+      "image": {
+        "@type": "ImageObject",
+        "url": "https://pepperplace.com/featured-pepper-photo.jpg",
+        "caption": "Pepper the dog enjoying life",
+        "description": "Main gallery preview image"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Pepper's Family"
+      },
+      "datePublished": "2014-01-01",
+      "dateModified": "2024-12-31",
+      "keywords": ["dog photos", "pet photography", "dog timeline", "golden retriever", "pet gallery"],
+      "inLanguage": "en-US",
+      "copyrightYear": 2024,
+      "genre": "Pet Photography"
+    }
+    </script>
+
     <!--
       Notice the use of %PUBLIC_URL% in the tags above.
       It will be replaced with the URL of the `public` folder during the build.
