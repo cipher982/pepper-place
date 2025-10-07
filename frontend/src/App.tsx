@@ -3,20 +3,20 @@ import Timeline from "./components/Timeline";
 import PhotoGallery from "./components/PhotoGallery";
 import usePhotoData from "./hooks/usePhotoData";
 import usePhotoNavigation from "./hooks/usePhotoNavigation";
+import {
+  AppContainer,
+  Header,
+  Footer,
+  LoadingState,
+  ErrorState,
+  TimelineGalleryContainer
+} from "./styles/App.styles";
 
 // Lazy load debug components (only loaded when ?debug=true)
 const DebugPanel = lazy(() => import("./components/DebugPanel"));
 const SortDebugger = lazy(() => import("./components/SortDebugger"));
 const MetadataChecker = lazy(() => import("./components/MetadataChecker"));
 const YearJumpDebugger = lazy(() => import("./components/YearJumpDebugger"));
-import { 
-  AppContainer, 
-  Header, 
-  Footer, 
-  LoadingState, 
-  ErrorState,
-  TimelineGalleryContainer 
-} from "./styles/App.styles";
 
 // Enable debug mode with query param (e.g., ?debug=true)
 const isDebugMode = (() => {
