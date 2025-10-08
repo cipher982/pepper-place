@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    container_name: umami-analytics
+    restart: unless-stopped
+    ports:
+      - "3002:3000"  # Expose on cube:3002
+    environment:
+      DATABASE_URL: postgresql://umami:umami@umami-db:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: ${UMAMI_APP_SECRET:-replace-with-random-secret}
+    depends_on:
+      - umami-db
+    networks:
+      - umami-network
+
+  umami-db:
+    image: postgres:15-alpine
+    container_name: umami-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:-umami-secure-password}
+    volumes:
+      - umami-db-data:/var/lib/postgresql/data
+    networks:
+      - umami-network
+
+volumes:
+  umami-db-data:
+
+networks:
+  umami-network:
+    driver: bridge
