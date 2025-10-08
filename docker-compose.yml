@@ -7,8 +7,8 @@ services:
       dockerfile: Dockerfile
     container_name: pepper-place-web
     restart: unless-stopped
-    ports:
-      - "3001:80"  # Change port as needed
+    expose:
+      - "80"  # Internal only - Caddy reverse proxy handles external access
     environment:
       - NODE_ENV=production
     networks:
