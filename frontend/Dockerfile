@@ -1,37 +1,23 @@
 # Multi-stage build for React app
 
 # Stage 1: Build
-# Using full node image (not alpine) because react-snap needs Chrome/Puppeteer
-FROM node:18-slim AS builder
-
-# Install Chrome dependencies for Puppeteer
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    fonts-liberation \
-    libnss3 \
-    libatk-bridge2.0-0 \
-    libdrm2 \
-    libxkbcommon0 \
-    libgbm1 \
-    libasound2 \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies (including devDependencies like react-snap)
-RUN npm ci
+# Install dependencies (production only - no react-snap)
+RUN npm ci --only=production
 
 # Copy source
 COPY . .
 
-# Build app (runs: generate-sitemap → webpack → react-snap)
-RUN npm run build
+# Build without pre-rendering (react-snap doesn't work reliably in Docker)
+# Pre-rendering works locally but adds complexity to containerized builds
+RUN SKIP_PREFLIGHT_CHECK=true npm run generate-sitemap && \
+    npm run build
 
 # Stage 2: Production
 FROM nginx:alpine
