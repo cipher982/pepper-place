@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  pepper-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pepper-place-web
+    restart: unless-stopped
+    ports:
+      - "3001:80"  # Change port as needed
+    environment:
+      - NODE_ENV=production
+    networks:
+      - coolify
+    labels:
+      - "caddy_0=https://pepper.drose.io"
+      - "caddy_0.reverse_proxy={{upstreams 80}}"
+      - "caddy_ingress_network=coolify"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  coolify:
+    external: true
