@@ -3,16 +3,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: pepper-place-web
+      args:
+        - PUBLIC_URL=/pepper
     restart: unless-stopped
     expose:
-      - "80"  # Internal only - Caddy reverse proxy handles external access
+      - "3000"  # Internal only - Caddy reverse proxy handles external access
     environment:
       - NODE_ENV=production
     networks:
       - coolify
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
       timeout: 3s
       retries: 3

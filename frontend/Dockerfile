@@ -14,6 +14,11 @@ RUN npm ci --only=production
 # Copy source
 COPY . .
 
+# Build with PUBLIC_URL for subdirectory support
+# PUBLIC_URL tells CRA where assets will be served from
+ARG PUBLIC_URL=/pepper
+ENV PUBLIC_URL=${PUBLIC_URL}
+
 # Build without pre-rendering (react-snap doesn't work reliably in Docker)
 # Pre-rendering works locally but adds complexity to containerized builds
 RUN SKIP_PREFLIGHT_CHECK=true npm run generate-sitemap && \
@@ -28,11 +33,11 @@ COPY --from=builder /app/build /usr/share/nginx/html
 # Copy custom nginx config for SPA
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port
-EXPOSE 80
+# Expose port (standardized to 3000 for React apps)
+EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
