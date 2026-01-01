@@ -2,9 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
-    <loc>https://pepper.drose.io</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1</priority>
-    <lastmod>2025-10-07</lastmod>
+    <loc>https://pepper.drose.io/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+    <lastmod>2025-01-01</lastmod>
   </url>
+  <!-- Note: This is a single-page gallery app. Deep links to years
+       could be added with hash-based routing (e.g., /#year=2020)
+       but Google doesn't index hash URLs well. For meaningful SEO,
+       would need server-side rendering or static page generation. -->
 </urlset>

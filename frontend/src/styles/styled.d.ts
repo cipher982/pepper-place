@@ -20,6 +20,8 @@ declare module 'styled-components' {
         border: string;
         shadow: string;
         overlay: string;
+        hover: string;
+        active: string;
       };
       feedback: {
         error: {

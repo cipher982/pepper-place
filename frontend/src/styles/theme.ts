@@ -20,6 +20,8 @@ const theme = {
       border: "#E0D9CF",     // Softer border color
       shadow: "rgba(0, 0, 0, 0.08)", // Slightly stronger shadow
       overlay: "rgba(63, 50, 42, 0.75)", // Warmer overlay background
+      hover: "rgba(226, 125, 96, 0.1)", // Hover state background
+      active: "rgba(226, 125, 96, 0.2)", // Active/pressed state background
     },
     feedback: {
       error: {

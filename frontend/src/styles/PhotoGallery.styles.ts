@@ -332,8 +332,156 @@ export const StyledProgressiveImage = styled.img<{ $loaded: boolean }>`
   object-fit: cover;
   transition: opacity ${({ theme }) => theme.transitions.medium};
   opacity: ${({ $loaded }) => ($loaded ? "1" : "0.5")};
-  
+
   /* Ensure images are responsive */
   width: 100%;
   height: 100%;
+`;
+
+export const ShareButton = styled.button<{ $isOpen: boolean }>`
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: ${({ theme }) => theme.borderRadius.xl};
+  background-color: ${({ theme }) => theme.colors.ui.overlay};
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: ${({ theme }) => theme.zIndex.modal};
+  transition: all ${({ theme }) => theme.transitions.short};
+
+  &:hover {
+    transform: scale(1.1);
+    background-color: ${({ theme }) => theme.colors.primary};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.primary};
+    outline-offset: 2px;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  svg {
+    width: 24px;
+    height: 24px;
+    fill: ${({ theme }) => theme.colors.text.light};
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    width: 44px;
+    height: 44px;
+    bottom: 20px;
+    right: 20px;
+
+    svg {
+      width: 22px;
+      height: 22px;
+    }
+  }
+`;
+
+export const ShareMenu = styled.div<{ $isOpen: boolean }>`
+  position: fixed;
+  bottom: 84px;
+  right: 24px;
+  background-color: ${({ theme }) => theme.colors.background.secondary};
+  border-radius: ${({ theme }) => theme.borderRadius.lg};
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: ${({ theme }) => theme.zIndex.modal};
+  overflow: hidden;
+  opacity: ${({ $isOpen }) => ($isOpen ? "1" : "0")};
+  transform: ${({ $isOpen }) => ($isOpen ? "translateY(0)" : "translateY(10px)")};
+  visibility: ${({ $isOpen }) => ($isOpen ? "visible" : "hidden")};
+  transition: all ${({ theme }) => theme.transitions.short}, visibility 0s ${({ $isOpen }) => ($isOpen ? "0s" : "0.2s")};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    bottom: 76px;
+    right: 20px;
+  }
+`;
+
+export const ShareMenuItem = styled.button`
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  background-color: transparent;
+  color: ${({ theme }) => theme.colors.text.primary};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: background-color ${({ theme }) => theme.transitions.short};
+
+  &:hover {
+    background-color: ${({ theme }) => theme.colors.ui.hover};
+  }
+
+  &:focus-visible {
+    background-color: ${({ theme }) => theme.colors.ui.hover};
+    outline: 2px solid ${({ theme }) => theme.colors.primary};
+    outline-offset: -2px;
+  }
+
+  &:active {
+    background-color: ${({ theme }) => theme.colors.ui.active};
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    padding: 12px 18px;
+    font-size: ${({ theme }) => theme.typography.fontSize.xs};
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+`;
+
+export const ShareOverlay = styled.div<{ $isOpen: boolean }>`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: transparent;
+  z-index: ${({ theme }) => theme.zIndex.modal - 1};
+  display: ${({ $isOpen }) => ($isOpen ? "block" : "none")};
+`;
+
+export const CopyToast = styled.div<{ $visible: boolean }>`
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%) ${({ $visible }) => ($visible ? "translateY(0)" : "translateY(20px)")};
+  background-color: ${({ theme }) => theme.colors.background.secondary};
+  color: ${({ theme }) => theme.colors.text.primary};
+  padding: 12px 24px;
+  border-radius: ${({ theme }) => theme.borderRadius.lg};
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  opacity: ${({ $visible }) => ($visible ? "1" : "0")};
+  visibility: ${({ $visible }) => ($visible ? "visible" : "hidden")};
+  transition: all ${({ theme }) => theme.transitions.short};
+  z-index: ${({ theme }) => theme.zIndex.modal + 1};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    bottom: 80px;
+    padding: 10px 20px;
+    font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  }
 `; 
