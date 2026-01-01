@@ -20,7 +20,11 @@ const path = require('path');
  */
 
 const manifestPath = process.argv[2] || './public/manifest.json';
-const baseUrl = process.argv[3] || process.env.PUBLIC_URL || 'https://pepper.drose.io';
+// SITE_URL for absolute sitemap URLs, PUBLIC_URL is for relative asset paths
+// If PUBLIC_URL starts with "/" it's a relative path, use default domain instead
+const publicUrl = process.env.PUBLIC_URL || '';
+const baseUrl = process.argv[3] ||
+  (publicUrl.startsWith('http') ? publicUrl : 'https://pepper.drose.io');
 const outputPath = './public/sitemap.xml';
 
 function generateSitemap() {
