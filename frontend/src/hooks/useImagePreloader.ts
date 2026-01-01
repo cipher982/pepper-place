@@ -170,7 +170,14 @@ export default function useImagePreloader({
     imageIndexes.forEach(index => {
       const photo = photos[index];
       if (photo) {
-        preloadImage(photo.url);
+        // If it's the current image, preload the large version
+        // Otherwise, preload the medium version to save bandwidth
+        const isCurrent = index === currentIndex;
+        const urlToPreload = (isCurrent || !photo.sizes) 
+          ? photo.url 
+          : (photo.sizes.medium || photo.sizes.small || photo.url);
+          
+        preloadImage(urlToPreload);
       }
     });
 

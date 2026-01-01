@@ -182,15 +182,27 @@ class PhotoService {
       const manifest = await this.getManifest();
       
       // Transform manifest photos to Photo objects with proper URLs
-      return manifest.photos.map(photo => ({
-        id: photo.id,
-        url: this.getPhotoUrl(photo.path),
-        thumbnailUrl: this.getThumbnailUrl(photo.path),
-        year: photo.year,
-        month: photo.month,
-        timestamp: photo.timestamp,
-        tags: []
-      }));
+      return manifest.photos.map(photo => {
+        const sizes: { [key: string]: string } = {};
+        if (photo.sizes) {
+          Object.entries(photo.sizes).forEach(([size, path]) => {
+            sizes[size] = this.getPhotoUrl(path);
+          });
+        }
+
+        return {
+          id: photo.id,
+          url: this.getPhotoUrl(photo.path),
+          thumbnailUrl: this.getThumbnailUrl(photo.path),
+          blurHash: photo.blur_hash,
+          sizes: Object.keys(sizes).length > 0 ? sizes : undefined,
+          dimensions: photo.dimensions,
+          year: photo.year,
+          month: photo.month,
+          timestamp: photo.timestamp,
+          tags: []
+        };
+      });
     } catch (error) {
       console.error("Error fetching photos:", error);
       throw new Error(`Failed to fetch photos: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -220,12 +232,12 @@ class PhotoService {
     if (mediaPath.startsWith(PATHS.MEDIA_PREFIX)) {
       const pathParts = mediaPath.split("/");
       if (pathParts.length >= 4) {
-        // Extract filename without extension to handle format conversion
+        // Extract filename and strip size suffixes (e.g., hash_large.webp -> hash)
         const filename = pathParts[3];
-        const filenameWithoutExt = filename.substring(0, filename.lastIndexOf("."));
+        const baseHash = filename.split(".")[0].split("_")[0];
         
-        // Reconstruct as thumbnails/YYYY/MM/filename.webp (thumbnails are now WebP format)
-        const thumbnailPath = `${PATHS.THUMBNAIL_PREFIX}${pathParts[1]}/${pathParts[2]}/${filenameWithoutExt}.webp`;
+        // Reconstruct as thumbnails/YYYY/MM/baseHash.webp
+        const thumbnailPath = `${PATHS.THUMBNAIL_PREFIX}${pathParts[1]}/${pathParts[2]}/${baseHash}.webp`;
         return `${this.baseUrl}/${thumbnailPath}`;
       }
     }

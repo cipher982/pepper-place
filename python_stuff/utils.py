@@ -9,7 +9,42 @@ import tempfile
 import mimetypes
 import json
 import re
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Any, Dict
+import blurhash
+
+
+def generate_blurhash(image_path_or_buffer: Any, x_components: int = 4, y_components: int = 3) -> Optional[str]:
+    """
+    Generate a BlurHash string for an image.
+    
+    Args:
+        image_path_or_buffer: Path to the image file or a BytesIO buffer
+        x_components: Number of components in the x-axis (default 4)
+        y_components: Number of components in the y-axis (default 3)
+        
+    Returns:
+        Optional[str]: BlurHash string or None if generation fails
+    """
+    try:
+        if isinstance(image_path_or_buffer, (str, os.PathLike)):
+            img = Image.open(image_path_or_buffer)
+        else:
+            # Assuming it's a buffer
+            img = Image.open(image_path_or_buffer)
+            
+        # Convert to RGB if necessary
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+            
+        # Resize for faster processing (BlurHash doesn't need high res)
+        img.thumbnail((100, 100))
+        
+        # Generate hash
+        hash_str = blurhash.encode(img, x_components=x_components, y_components=y_components)
+        return hash_str
+    except Exception as e:
+        print(f"Error generating BlurHash: {e}")
+        return None
 
 
 def get_exif_date(

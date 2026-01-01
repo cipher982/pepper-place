@@ -24,7 +24,7 @@ const manifestPath = process.argv[2] || './public/manifest.json';
 // If PUBLIC_URL starts with "/" it's a relative path, use default domain instead
 const publicUrl = process.env.PUBLIC_URL || '';
 const baseUrl = process.argv[3] ||
-  (publicUrl.startsWith('http') ? publicUrl : 'https://pepper.drose.io');
+  (publicUrl.startsWith('http') ? publicUrl : 'https://drose.io/pepper/');
 const outputPath = './public/sitemap.xml';
 
 function generateSitemap() {

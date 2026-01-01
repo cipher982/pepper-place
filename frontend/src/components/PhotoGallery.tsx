@@ -19,7 +19,7 @@ import {
 } from "../styles/PhotoGallery.styles";
 
 // Share configuration - moved outside component for performance
-const SITE_URL = "https://pepper.drose.io/";
+const SITE_URL = "https://drose.io/pepper/";
 const SHARE_TEXT = "Check out Pepper's photo journey - 10 years of adventures! 🐾";
 
 type SharePlatform = "twitter" | "facebook" | "pinterest" | "copy";

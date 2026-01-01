@@ -2,4 +2,4 @@
 User-agent: *
 Disallow:
 
-Sitemap: https://pepper.drose.io/sitemap.xml
+Sitemap: https://drose.io/pepper/sitemap.xml

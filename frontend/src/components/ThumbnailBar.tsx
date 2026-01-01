@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState, useEffect } from "react";
 // @ts-ignore - Ignoring the type error with react-window import
 import { FixedSizeList as List } from "react-window";
+import { Blurhash } from "react-blurhash";
 import styled from "styled-components";
 import { Photo } from "../types";
 
@@ -16,13 +17,32 @@ const StyledThumbnailBar = styled.div`
   width: 100%;
 `;
 
+const ThumbnailWrapper = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  overflow: hidden;
+`;
+
+const BlurhashOverlay = styled.div<{ $loaded: boolean }>`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  opacity: ${({ $loaded }) => ($loaded ? 0 : 1)};
+  transition: opacity 0.3s ease-in-out;
+  pointer-events: none;
+`;
+
 // Styled thumbnail item
 const StyledThumbnail = styled.img<{ $isActive: boolean }>`
   width: 100%;
   height: 100%;
   object-fit: cover;
   cursor: pointer;
-  border-radius: ${({ theme }) => theme.borderRadius.md};
   transition: all ${({ theme }) => theme.transitions.short};
   box-shadow: 0 2px 6px ${({ theme }) => theme.colors.ui.shadow};
   border: ${({ $isActive, theme }) => 
@@ -48,6 +68,7 @@ const ThumbnailItem: React.FC<{
 }> = ({ index, style, data }) => {
   const { photos, currentIndex, onSelect } = data;
   const photo = photos[index];
+  const [loaded, setLoaded] = useState(false);
   
   const handleClick = useCallback(() => {
     onSelect(index);
@@ -64,14 +85,29 @@ const ThumbnailItem: React.FC<{
       display: "flex",
       alignItems: "center"
     }}>
-      <StyledThumbnail
-        src={photo.thumbnailUrl}
-        alt={`Thumbnail ${index + 1}`}
-        onClick={handleClick}
-        $isActive={isActive}
-        loading="eager"
-        decoding="async"
-      />
+      <ThumbnailWrapper>
+        {photo.blurHash && (
+          <BlurhashOverlay $loaded={loaded}>
+            <Blurhash
+              hash={photo.blurHash}
+              width="100%"
+              height="100%"
+              resolutionX={32}
+              resolutionY={32}
+              punch={1}
+            />
+          </BlurhashOverlay>
+        )}
+        <StyledThumbnail
+          src={photo.thumbnailUrl}
+          alt={`Thumbnail ${index + 1}`}
+          onClick={handleClick}
+          $isActive={isActive}
+          onLoad={() => setLoaded(true)}
+          loading="lazy"
+          decoding="async"
+        />
+      </ThumbnailWrapper>
     </div>
   );
 };

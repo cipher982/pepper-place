@@ -29,6 +29,7 @@ from utils import validate_video_file
 from utils import validate_image_file
 from utils import get_video_metadata
 from utils import optimize_video
+from utils import generate_blurhash
 
 # Load environment variables
 load_dotenv(".env")
@@ -57,7 +58,11 @@ WEB_IMAGE_QUALITY = 75  # Quality for web images (reduced from 85)
 SKIP_VIDEO_THUMBNAILS = False  # Skip video thumbnail creation
 
 # Image optimization settings
-MAIN_IMAGE_SIZE = (1600, 900)  # Reduced from 1920x1080 for smaller file size
+IMAGE_SIZES = {
+    "small": (480, 320),
+    "medium": (800, 600),
+    "large": (1600, 1200)
+}
 MAIN_IMAGE_FORMAT = "WEBP"  # Modern format for better compression
 MAIN_IMAGE_QUALITY = 75  # Reduced quality for better compression (was 85)
 
@@ -279,8 +284,15 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
 
         # Get the thread-local MinIO client if needed
         minio_client = None if dry_run else get_minio_client()
+        
+        # Initialize blurhash
+        blur_hash = None
 
         # MAIN MEDIA UPLOAD - Process based on file type
+        media_key = None
+        media_sizes = {}
+        media_dimensions = {}
+        
         if is_video:
             # For videos, optimize and upload
             optimized_buffer = optimize_video(file_path)
@@ -300,22 +312,35 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
                 result["error"] = "Failed to optimize video"
                 return result
         else:
-            # For images, create optimized version
-            main_buffer = create_main_image(file_path)
-            if main_buffer:
-                media_key = f"media/{year}/{month:02d}/{file_hash}.webp"
-                media_size = main_buffer.getbuffer().nbytes
+            # For images, create optimized version in multiple sizes
+            size_buffers, size_dims = create_main_image(file_path)
+            if size_buffers:
+                # Use 'large' as the primary media_key for backward compatibility
+                media_key = f"media/{year}/{month:02d}/{file_hash}_large.webp"
                 
-                if not dry_run:
-                    minio_client.put_object(
-                        BUCKET_NAME,
-                        media_key,
-                        main_buffer,
-                        media_size,
-                        content_type="image/webp",
-                    )
+                for size_name, buffer in size_buffers.items():
+                    current_key = f"media/{year}/{month:02d}/{file_hash}_{size_name}.webp"
+                    current_size = buffer.getbuffer().nbytes
+                    media_sizes[size_name] = current_key
+                    media_dimensions[size_name] = size_dims[size_name]
+                    
+                    if not dry_run:
+                        minio_client.put_object(
+                            BUCKET_NAME,
+                            current_key,
+                            buffer,
+                            current_size,
+                            content_type="image/webp",
+                        )
+                
+                # Generate BlurHash from the large buffer
+                large_buffer = size_buffers.get("large")
+                if large_buffer:
+                    large_buffer.seek(0)
+                    blur_hash = generate_blurhash(large_buffer)
+                    large_buffer.seek(0)
             else:
-                result["error"] = "Failed to create optimized image"
+                result["error"] = "Failed to create optimized images"
                 return result
 
         # Create and upload thumbnail
@@ -329,6 +354,13 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
         if thumb_buffer:
             thumbnail_key = f"thumbnails/{year}/{month:02d}/{file_hash}.webp"
             thumb_size = thumb_buffer.getbuffer().nbytes
+            
+            # If we didn't get a blurhash from the main image (e.g. video), 
+            # try to get it from the thumbnail
+            if not blur_hash:
+                thumb_buffer.seek(0)
+                blur_hash = generate_blurhash(thumb_buffer)
+                thumb_buffer.seek(0)
             
             if not dry_run:
                 minio_client.put_object(
@@ -345,8 +377,11 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
         # Add timestamp to the result for manifest generation later
         result["timestamp"] = timestamp
         result["media_key"] = media_key
+        result["media_sizes"] = media_sizes
+        result["media_dimensions"] = media_dimensions
         result["year"] = year
         result["month"] = month
+        result["blur_hash"] = blur_hash
         
         result["success"] = True
         return result
@@ -359,130 +394,149 @@ def process_file(file_path: str, dry_run: bool = False) -> Dict[str, Any]:
 def generate_manifest(minio_client):
     """
     Generate a manifest.json file containing metadata for all photos in the bucket.
-    The manifest includes:
-    - List of all photos with metadata (id, path, year, month, filename, timestamp)
-    - Timeline data with photo counts by year
     """
     print("Generating manifest file...")
 
     try:
-        # First check if metadata.json exists to get detailed timestamps
+        # Load metadata.json
         metadata = {"files": {}}
         try:
-            metadata_exists = False
-            try:
-                minio_client.stat_object(BUCKET_NAME, "metadata.json")
-                metadata_exists = True
-            except Exception:
-                pass
-                
-            if metadata_exists:
-                # Get existing metadata
-                temp_file = tempfile.NamedTemporaryFile(delete=False)
-                minio_client.fget_object(BUCKET_NAME, "metadata.json", temp_file.name)
-                with open(temp_file.name, 'r') as f:
-                    metadata = json.load(f)
-                # Clean up temporary file
-                os.unlink(temp_file.name)
-                print(f"Loaded detailed metadata for {len(metadata.get('files', {}))} files")
-        except Exception as e:
-            print(f"Warning: Failed to load detailed metadata: {e}")
-            metadata = {"files": {}}
+            minio_client.stat_object(BUCKET_NAME, "metadata.json")
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            minio_client.fget_object(BUCKET_NAME, "metadata.json", temp_file.name)
+            with open(temp_file.name, 'r') as f:
+                metadata = json.load(f)
+            os.unlink(temp_file.name)
+        except Exception:
+            pass
         
-        # List all objects in the media directory
-        photos = []
-        objects = minio_client.list_objects(
-            BUCKET_NAME, prefix="media/", recursive=True
-        )
-
-        # Process each object
+        # List all objects in media/
+        objects = list(minio_client.list_objects(BUCKET_NAME, prefix="media/", recursive=True))
+        
+        # Group objects by content hash (the part before the size suffix)
+        photo_entries = {}
+        
         for obj in objects:
-            # Parse path components
             path_parts = obj.object_name.split("/")
-            if len(path_parts) >= 4:  # media/YEAR/MONTH/FILENAME
-                try:
-                    year = int(path_parts[1])
-                    month = int(path_parts[2])
-                    filename = path_parts[3]
-                    
-                    # Try to get timestamp from metadata file first
-                    timestamp = None
-                    if obj.object_name in metadata.get("files", {}):
-                        timestamp = metadata["files"][obj.object_name].get("timestamp")
-                    
-                    # Fallback to last_modified if no metadata timestamp
-                    if not timestamp and hasattr(obj, "last_modified"):
-                        timestamp = obj.last_modified.isoformat()
+            if len(path_parts) < 4:
+                continue
+                
+            year = int(path_parts[1])
+            month = int(path_parts[2])
+            full_filename = path_parts[3]
+            
+            # Determine base filename and size if applicable
+            # Example: hash123_small.webp -> base: hash123, size: small
+            # Example: hash456.mp4 -> base: hash456, size: None
+            
+            size_suffix = None
+            base_id = full_filename
+            
+            if "_" in full_filename:
+                base_id = full_filename.rsplit("_", 1)[0]
+                suffix_part = full_filename.rsplit("_", 1)[1]
+                if "." in suffix_part:
+                    size_suffix = suffix_part.split(".")[0]
+            elif "." in full_filename:
+                base_id = full_filename.split(".")[0]
 
-                    # Create photo entry
-                    photo = {
-                        "id": obj.object_name,
-                        "path": obj.object_name,
-                        "year": year,
-                        "month": month,
-                        "filename": filename,
-                        "size": obj.size,
-                        "timestamp": timestamp,
-                        "last_modified": obj.last_modified.isoformat()
-                        if hasattr(obj, "last_modified")
-                        else None,
-                    }
+            # Unique key for grouping: media/YEAR/MONTH/BASE_ID
+            group_key = f"media/{year}/{month:02d}/{base_id}"
+            
+            if group_key not in photo_entries:
+                photo_entries[group_key] = {
+                    "id": group_key,
+                    "year": year,
+                    "month": month,
+                    "filename": full_filename, # Will be replaced by primary
+                    "path": obj.object_name,    # Will be replaced by primary
+                    "sizes": {},
+                    "dimensions": {},
+                    "timestamp": None,
+                    "blur_hash": None,
+                    "size": 0
+                }
+            
+            entry = photo_entries[group_key]
+            
+            # If it has a size suffix, add to sizes dict
+            if size_suffix:
+                entry["sizes"][size_suffix] = obj.object_name
+                # Use 'large' as the primary path if available
+                if size_suffix == "large":
+                    entry["path"] = obj.object_name
+                    entry["filename"] = full_filename
+            else:
+                # Video or unsized image
+                entry["path"] = obj.object_name
+                entry["filename"] = full_filename
+            
+            # Cumulative size
+            entry["size"] += obj.size
+            
+            # Merge metadata if available
+            # Try to match by this object's name OR the group's primary path
+            meta = metadata.get("files", {}).get(obj.object_name)
+            if meta:
+                if meta.get("timestamp"): entry["timestamp"] = meta["timestamp"]
+                if meta.get("blur_hash"): entry["blur_hash"] = meta["blur_hash"]
+                if meta.get("media_sizes"): entry["sizes"].update(meta["media_sizes"])
+                if meta.get("media_dimensions"): entry["dimensions"].update(meta["media_dimensions"])
 
-                    photos.append(photo)
-                except (ValueError, IndexError) as e:
-                    print(f"Error parsing path {obj.object_name}: {e}")
+        # Final pass to clean up and ensure all have timestamps
+        final_photos = []
+        for group_key, entry in photo_entries.items():
+            # If no timestamp yet, try to find in any of the sizes metadata
+            if not entry["timestamp"]:
+                for size_path in entry["sizes"].values():
+                    meta = metadata.get("files", {}).get(size_path)
+                    if meta and meta.get("timestamp"):
+                        entry["timestamp"] = meta["timestamp"]
+                        if not entry["blur_hash"]: entry["blur_hash"] = meta.get("blur_hash")
+                        break
+            
+            final_photos.append(entry)
 
-        # Sort photos by timestamp if available, then year/month (oldest first)
-        photos.sort(key=lambda p: (
+        # Sort photos by timestamp
+        final_photos.sort(key=lambda p: (
             p["timestamp"] if p["timestamp"] else f"{p['year']}-{p['month']:02d}-01T00:00:00",
             p["year"], 
             p["month"],
-            p["filename"]  # Finally sort by filename for consistent ordering
+            p["id"]
         ))
 
-        # Generate timeline data (photo counts by year)
+        # Generate timeline data
         year_counts = {}
-        for photo in photos:
+        for photo in final_photos:
             year = photo["year"]
             year_counts[year] = year_counts.get(year, 0) + 1
 
-        timeline = [
-            {"year": year, "count": count} for year, count in year_counts.items()
-        ]
+        timeline = [{"year": year, "count": count} for year, count in year_counts.items()]
         timeline.sort(key=lambda x: x["year"])
 
         # Create the manifest
         manifest = {
-            "photos": photos,
+            "photos": final_photos,
             "timeline": timeline,
             "generated_at": datetime.now().isoformat(),
-            "total_photos": len(photos),
+            "total_photos": len(final_photos),
         }
 
-        # Save manifest to a temporary file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as temp_file:
+        # Save and upload manifest
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as temp_file:
             json.dump(manifest, temp_file, indent=2)
             temp_file_path = temp_file.name
 
-        # Upload manifest to Minio
-        print(f"Uploading manifest with metadata for {len(photos)} photos...")
-        minio_client.fput_object(
-            BUCKET_NAME,
-            "manifest.json",
-            temp_file_path,
-            content_type="application/json",
-        )
-
-        # Clean up temporary file
+        minio_client.fput_object(BUCKET_NAME, "manifest.json", temp_file_path, content_type="application/json")
         os.unlink(temp_file_path)
 
-        print("✓ Manifest uploaded successfully")
+        print(f"✓ Manifest uploaded with {len(final_photos)} photos")
         return True
 
     except Exception as e:
         print(f"Error generating manifest: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -619,7 +673,10 @@ def upload_photos(photos_dir: str, dry_run=False, dedupe=False, threshold=5, ski
                         metadata["files"][result["media_key"]] = {
                             "timestamp": result["timestamp"],
                             "year": result["year"],
-                            "month": result["month"]
+                            "month": result["month"],
+                            "blur_hash": result.get("blur_hash"),
+                            "media_sizes": result.get("media_sizes", {}),
+                            "media_dimensions": result.get("media_dimensions", {})
                         }
                 
                 # Write updated metadata back
@@ -800,60 +857,69 @@ def compute_image_hash(img_path):
         return None
 
 
-def create_main_image(file_path):
-    """Create an optimized main image for gallery viewing"""
+def create_main_image(file_path: str) -> Tuple[Dict[str, io.BytesIO], Dict[str, Tuple[int, int]]]:
+    """Create optimized versions of an image in multiple sizes and return their dimensions"""
     if file_path.lower().endswith((".heic", ".heif")) and CONVERT_HEIC:
         # Convert HEIC to intermediate format first
         jpeg_buffer = convert_heic_to_jpeg(file_path, WEB_IMAGE_QUALITY)
         if jpeg_buffer:
             try:
-                image = Image.open(jpeg_buffer)
+                base_image = Image.open(jpeg_buffer)
                 # Apply orientation correction
-                image = apply_exif_orientation(image)
+                base_image = apply_exif_orientation(base_image)
             except Exception as e:
                 print(f"Error creating main image from HEIC {file_path}: {e}")
-                return None
+                return {}, {}
         else:
-            return None
+            return {}, {}
     else:
         try:
-            image = Image.open(file_path)
+            base_image = Image.open(file_path)
             # Apply orientation correction
-            image = apply_exif_orientation(image)
+            base_image = apply_exif_orientation(base_image)
         except Exception as e:
             print(f"Error opening image {file_path}: {e}")
-            return None
+            return {}, {}
 
+    buffers = {}
+    dimensions = {}
     try:
-        # Calculate aspect ratio preserving resize dimensions
-        aspect_ratio = image.width / image.height
-        target_ratio = MAIN_IMAGE_SIZE[0] / MAIN_IMAGE_SIZE[1]
+        # Get original dimensions
+        orig_width, orig_height = base_image.size
         
-        if aspect_ratio > target_ratio:
-            # Image is wider than target ratio
-            new_width = MAIN_IMAGE_SIZE[0]
-            new_height = int(new_width / aspect_ratio)
-        else:
-            # Image is taller than target ratio
-            new_height = MAIN_IMAGE_SIZE[1]
-            new_width = int(new_height * aspect_ratio)
-        
-        # Resize image
-        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        
-        # Save as WebP
-        main_buffer = io.BytesIO()
-        if image.mode == "RGBA":
-            # Handle transparency
-            image.save(main_buffer, format=MAIN_IMAGE_FORMAT, lossless=True)
-        else:
-            image.save(main_buffer, format=MAIN_IMAGE_FORMAT, quality=MAIN_IMAGE_QUALITY, method=6)
-        
-        main_buffer.seek(0)
-        return main_buffer
+        for size_name, max_size in IMAGE_SIZES.items():
+            max_w, max_h = max_size
+            
+            # Calculate scaling factor to fit within max_w and max_h
+            # while preserving aspect ratio
+            ratio = min(max_w / orig_width, max_h / orig_height)
+            
+            # Don't upscale
+            if ratio >= 1.0:
+                new_width, new_height = orig_width, orig_height
+            else:
+                new_width = int(orig_width * ratio)
+                new_height = int(orig_height * ratio)
+            
+            # Create copy and resize
+            image = base_image.copy()
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Save as WebP
+            buffer = io.BytesIO()
+            if image.mode == "RGBA":
+                image.save(buffer, format=MAIN_IMAGE_FORMAT, lossless=True)
+            else:
+                image.save(buffer, format=MAIN_IMAGE_FORMAT, quality=MAIN_IMAGE_QUALITY, method=6)
+            
+            buffer.seek(0)
+            buffers[size_name] = buffer
+            dimensions[size_name] = (new_width, new_height)
+            
+        return buffers, dimensions
     except Exception as e:
         print(f"Error processing main image for {file_path}: {e}")
-        return None
+        return {}, {}
 
 
 if __name__ == "__main__":
