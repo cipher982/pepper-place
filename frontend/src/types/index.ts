@@ -2,6 +2,17 @@ export interface Photo {
   id: string;
   url: string;
   thumbnailUrl: string;
+  blurHash?: string;
+  sizes?: {
+    small?: string;
+    medium?: string;
+    large?: string;
+  };
+  dimensions?: {
+    small?: [number, number];
+    medium?: [number, number];
+    large?: [number, number];
+  };
   year: number;
   month: number;
   timestamp?: string;
@@ -23,6 +34,17 @@ export interface MinioConfig {
 export interface ManifestPhoto {
   id: string;
   path: string;
+  blur_hash?: string;
+  sizes?: {
+    small?: string;
+    medium?: string;
+    large?: string;
+  };
+  dimensions?: {
+    small?: [number, number];
+    medium?: [number, number];
+    large?: [number, number];
+  };
   year: number;
   month: number;
   filename: string;
